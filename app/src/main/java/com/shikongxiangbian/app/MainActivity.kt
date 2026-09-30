@@ -284,7 +284,6 @@ private fun AnalysisPage(
                     onValue = onPatternText
                 )
             }
-            item { TenGodCard(snapshot) }
             item {
                 EditorCard(
                     title = "主客 · 体用",
@@ -293,6 +292,7 @@ private fun AnalysisPage(
                     onValue = onBodyUseText
                 )
             }
+            item { TenGodCard(snapshot) }
             item { JudgmentFrameworkCard() }
             item {
                 EditorCard(
@@ -367,7 +367,7 @@ private fun PillarStrip(pillars: List<PillarView>) {
 @Composable
 private fun PipelineCard() {
     SectionCard("应事链") {
-        val steps = listOf("时空", "能量", "气（气势）", "象（象数）", "十神①", "主客体用", "十神②", "应事")
+        val steps = listOf("时空", "能量", "气象", "主客体用", "十神", "应事")
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
             steps.forEachIndexed { i, s ->
                 Box(Modifier.padding(vertical = 4.dp)) {
