@@ -17,6 +17,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Prepare Android home
+        run: mkdir -p ~/.android
+      - name: Restore persistent debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: shikongxiangbian-debug-keystore-v1
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
       - name: Upload APK
