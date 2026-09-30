@@ -6,7 +6,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ShiKongXiangBian">
         <activity
-            android:name=".V5MainActivity"
+            android:name=".V6MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
