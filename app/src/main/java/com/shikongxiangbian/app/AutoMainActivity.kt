@@ -59,6 +59,13 @@ private val V3Green = Color(0xFF214E3E)
 private val V3Soft = Color(0xFFE9F0EC)
 private val V3Line = Color(0xFFDDE4E0)
 
+private data class RecordParts(
+    val date: String,
+    val prediction: List<String>,
+    val actual: List<String>,
+    val calibration: List<String>
+)
+
 class AutoMainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -110,7 +117,9 @@ private fun AutoApp(
     var actualText by rememberSaveable { mutableStateOf("") }
     var recordsRaw by rememberSaveable { mutableStateOf(savedRecords) }
     var memoryRaw by rememberSaveable { mutableStateOf(savedMemory) }
+    var preCalibrationMemory by rememberSaveable { mutableStateOf("") }
     var lastCalibration by rememberSaveable { mutableStateOf("") }
+    var updatedMemory by rememberSaveable { mutableStateOf("") }
 
     val target = remember(dateText) { runCatching { LocalDateTime.parse(dateText, V3Fmt) }.getOrNull() }
     val snapshot = remember(birthText, gender, sect, target) {
@@ -157,38 +166,61 @@ private fun AutoApp(
             0 -> AutoAnalysisPage(
                 modifier = Modifier.padding(padding),
                 dateText = dateText,
-                onDateText = { dateText = it },
-                onNow = { dateText = LocalDateTime.now().format(V3Fmt) },
+                onDateText = {
+                    dateText = it
+                    preCalibrationMemory = ""
+                    lastCalibration = ""
+                    updatedMemory = ""
+                },
+                onNow = {
+                    dateText = LocalDateTime.now().format(V3Fmt)
+                    preCalibrationMemory = ""
+                    lastCalibration = ""
+                    updatedMemory = ""
+                },
                 snapshot = snapshot,
                 reading = reading,
                 hasBirth = birthText.isNotBlank(),
                 onOpenSettings = { tab = 2 },
                 actualText = actualText,
                 onActualText = { actualText = it },
+                preCalibrationMemory = preCalibrationMemory,
                 lastCalibration = lastCalibration,
+                updatedMemory = updatedMemory,
                 onSaveAndCalibrate = {
                     if (reading != null && snapshot != null && actualText.isNotBlank()) {
-                        val cal = AutoAnalysisEngine.calibrate(reading, actualText.trim(), memoryRaw)
+                        val originalMemory = reading.memoryHint
+                        val actual = actualText.trim()
+                        val cal = AutoAnalysisEngine.calibrate(reading, actual, memoryRaw)
+                        preCalibrationMemory = originalMemory
                         memoryRaw = cal.memoryRaw
                         onSaveMemory(memoryRaw)
                         lastCalibration = "${cal.result}｜${cal.text}"
+                        updatedMemory = AutoAnalysisEngine.memorySummary(memoryRaw, reading.signature)
 
-                        val energyText = reading.energy.take(5).joinToString("；") {
-                            "${it.order}.${it.source}→${it.target} ${it.relation}"
+                        val primaryEnergy = reading.energy.filter { it.primary }.joinToString("；") {
+                            "${it.band} ${it.source}→${it.target} ${it.relation}"
                         }
                         val judgmentText = reading.judgment.entries.joinToString("；") { "${it.key}=${it.value}" }
                         val record = listOf(
                             dateText,
-                            "能量：$energyText",
+                            "【原始判断】",
+                            "主作用链：${reading.chainSummary.joinToString("；")}",
+                            "能量：$primaryEnergy",
+                            "引动节点：${reading.activatedNodes.joinToString("；")}",
                             "气势：${reading.qi.joinToString("；")}",
                             "象：${reading.image}",
                             "主客体用：${reading.bodyUse.joinToString("；")}",
                             "十神：${reading.tenGod}｜${reading.tenGodMeaning}",
                             "应事：$judgmentText",
-                            "实际：${actualText.trim()}",
-                            "校正：${cal.result}｜${cal.text}"
+                            "预测前记忆：$originalMemory",
+                            "【实际发生】",
+                            actual,
+                            "【校正与记忆】",
+                            "校正：${cal.result}｜${cal.text}",
+                            "更新后记忆：$updatedMemory"
                         ).joinToString("\n")
-                        recordsRaw = (record + "\u001E" + recordsRaw).take(60000)
+                        recordsRaw = if (recordsRaw.isBlank()) record else record + "\u001E" + recordsRaw
                         onSaveRecords(recordsRaw)
                         actualText = ""
                     }
@@ -225,7 +257,9 @@ private fun AutoAnalysisPage(
     onOpenSettings: () -> Unit,
     actualText: String,
     onActualText: (String) -> Unit,
+    preCalibrationMemory: String,
     lastCalibration: String,
+    updatedMemory: String,
     onSaveAndCalibrate: () -> Unit
 ) {
     LazyColumn(
@@ -264,12 +298,12 @@ private fun AutoAnalysisPage(
         } else {
             item { AutoTimeSpaceCard(snapshot) }
             item { AutoPipelineCard() }
-            item { AutoEnergyCard(reading.energy) }
+            item { AutoEnergyCard(reading) }
             item { AutoQiCard(reading) }
             item { AutoBodyUseCard(reading.bodyUse) }
             item { AutoTenGodCard(reading) }
             item { AutoJudgmentCard(reading) }
-            item { AutoMemoryCard(reading.memoryHint) }
+            item { AutoMemoryCard(if (preCalibrationMemory.isBlank()) reading.memoryHint else preCalibrationMemory) }
             item {
                 AutoSection("当天实际发生") {
                     Text("这一栏由你填写；前面的分析全部由系统自动生成。", fontSize = 12.sp, color = Color.Gray)
@@ -292,9 +326,14 @@ private fun AutoAnalysisPage(
             item {
                 AutoSection("校正与记忆") {
                     if (lastCalibration.isBlank()) {
-                        Text("保存实际事件后，系统自动比较本次应事判断与实际落点，并写入个人记忆。", color = Color.Gray)
+                        Text("保存实际事件后，这里追加校正结果；上面的原始个人记忆仍保留，不会被覆盖。", color = Color.Gray)
                     } else {
                         Text(lastCalibration, lineHeight = 21.sp)
+                        if (updatedMemory.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text("更新后", fontSize = 12.sp, color = V3Green, fontWeight = FontWeight.Bold)
+                            Text(updatedMemory, lineHeight = 21.sp)
+                        }
                     }
                 }
             }
@@ -343,23 +382,31 @@ private fun AutoPipelineCard() {
     AutoSection("应事链") {
         Text("时空 → 能量 → 气象 → 主客体用 → 十神 → 应事", fontWeight = FontWeight.Bold, color = V3Green)
         Spacer(Modifier.height(6.dp))
-        Text("后一步只使用前一步筛出的主关系，不再把所有关系平铺混在一起。", fontSize = 12.sp, color = Color.Gray)
+        Text("能量按大运→流年→流月→流日→流时逐层入场；后一层作用在前面已形成的整个场上。", fontSize = 12.sp, color = Color.Gray)
     }
 }
 
 @Composable
-private fun AutoEnergyCard(energy: List<OrderedEnergy>) {
-    AutoSection("能量关系变化 · 按先后与远近排序") {
-        energy.forEach { e ->
+private fun AutoEnergyCard(reading: AutoReading) {
+    AutoSection("能量关系变化 · 逐层入场") {
+        Text("主作用链", fontSize = 12.sp, color = V3Green, fontWeight = FontWeight.Bold)
+        reading.chainSummary.forEach { Text("• $it", modifier = Modifier.padding(vertical = 2.dp), lineHeight = 20.sp) }
+        Spacer(Modifier.height(8.dp))
+        Text("被连续引动的节点", fontSize = 12.sp, color = V3Green, fontWeight = FontWeight.Bold)
+        if (reading.activatedNodes.isEmpty()) Text("暂无明显连续引动")
+        else reading.activatedNodes.forEach { Text("• $it", modifier = Modifier.padding(vertical = 2.dp)) }
+        Spacer(Modifier.height(10.dp))
+        Text("各层主要作用", fontSize = 12.sp, color = V3Green, fontWeight = FontWeight.Bold)
+        reading.energy.forEach { e ->
             Card(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 colors = CardDefaults.cardColors(containerColor = V3Bg),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(Modifier.padding(11.dp)) {
-                    Text("${e.order}. ${e.band}", fontSize = 12.sp, color = V3Green, fontWeight = FontWeight.Bold)
+                    Text("${e.band}${if (e.primary) " · 主" else " · 次"}", fontSize = 12.sp, color = V3Green, fontWeight = FontWeight.Bold)
                     Text("${e.source} → ${e.target}　${e.relation}", fontWeight = FontWeight.SemiBold)
-                    Text(e.note, fontSize = 12.sp, color = Color.Gray)
+                    Text(e.note, fontSize = 12.sp, color = Color.Gray, lineHeight = 18.sp)
                 }
             }
         }
@@ -406,35 +453,98 @@ private fun AutoJudgmentCard(reading: AutoReading) {
 
 @Composable
 private fun AutoMemoryCard(text: String) {
-    AutoSection("个人记忆参与") {
+    AutoSection("个人记忆参与 · 校正前") {
         Text(text, lineHeight = 21.sp)
         Spacer(Modifier.height(5.dp))
-        Text("同一气象签名累计到至少 2 次后，实际落点会参与后续领域判断。", fontSize = 12.sp, color = Color.Gray)
+        Text("这里保留进入本次判断前已有的个人经验；校正结果会在实际事件下面另行追加。", fontSize = 12.sp, color = Color.Gray)
     }
 }
 
 @Composable
 private fun AutoRecordsPage(modifier: Modifier, recordsRaw: String) {
-    val records = recordsRaw.split("\u001E").filter { it.isNotBlank() }
+    val records = recordsRaw.split("\u001E").filter { it.isNotBlank() }.map { parseRecord(it) }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
             Text("应象记录", fontSize = 27.sp, fontWeight = FontWeight.Bold)
-            Text("每条同时保存事前自动判断、实际事件和自动校正。", fontSize = 13.sp, color = Color.Gray)
+            Text("原始判断、实际发生、校正与记忆分开保存；校正不会覆盖前面的内容。", fontSize = 13.sp, color = Color.Gray)
         }
         if (records.isEmpty()) {
             item { AutoSection("还没有记录") { Text("填写一次实际事件并保存后，这里会出现完整链条。") } }
         } else {
-            items(records) { record ->
-                AutoSection(record.lineSequence().firstOrNull().orEmpty()) {
-                    Text(record.substringAfter("\n", record), lineHeight = 20.sp)
+            items(records) { record -> StructuredRecordCard(record) }
+        }
+    }
+}
+
+@Composable
+private fun StructuredRecordCard(record: RecordParts) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(record.date, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = V3Ink)
+            HorizontalDivider(color = V3Line)
+            RecordBlock("原始判断", record.prediction, V3Soft)
+            RecordBlock("实际发生", record.actual, V3Bg)
+            RecordBlock("校正与记忆", record.calibration, V3Soft)
+        }
+    }
+}
+
+@Composable
+private fun RecordBlock(title: String, lines: List<String>, bg: Color) {
+    Card(colors = CardDefaults.cardColors(containerColor = bg), shape = RoundedCornerShape(12.dp)) {
+        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+            Text(title, fontSize = 13.sp, color = V3Green, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(5.dp))
+            if (lines.isEmpty()) {
+                Text("—", color = Color.Gray)
+            } else {
+                lines.forEach { line ->
+                    val label = line.substringBefore("：", "")
+                    val value = if (label.isBlank()) line else line.substringAfter("：")
+                    if (label.isNotBlank() && label.length <= 8) {
+                        Text(label, fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                        Text(value, lineHeight = 19.sp)
+                    } else {
+                        Text(line, lineHeight = 19.sp, modifier = Modifier.padding(vertical = 2.dp))
+                    }
                 }
             }
         }
     }
+}
+
+private fun parseRecord(raw: String): RecordParts {
+    val lines = raw.lineSequence().filter { it.isNotBlank() }.toList()
+    val date = lines.firstOrNull().orEmpty()
+    val body = lines.drop(1)
+    val prediction = mutableListOf<String>()
+    val actual = mutableListOf<String>()
+    val calibration = mutableListOf<String>()
+    var section = "prediction"
+
+    body.forEach { line ->
+        when (line) {
+            "【原始判断】" -> section = "prediction"
+            "【实际发生】" -> section = "actual"
+            "【校正与记忆】" -> section = "calibration"
+            else -> when {
+                line.startsWith("实际：") -> actual += line.substringAfter("实际：")
+                line.startsWith("校正：") -> calibration += line
+                section == "actual" -> actual += line
+                section == "calibration" -> calibration += line
+                else -> prediction += line
+            }
+        }
+    }
+    return RecordParts(date, prediction, actual, calibration)
 }
 
 @Composable
