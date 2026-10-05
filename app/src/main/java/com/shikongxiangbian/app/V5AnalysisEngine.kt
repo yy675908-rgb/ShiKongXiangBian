@@ -18,6 +18,38 @@ enum class EnergyRelation { SAME, GENERATES, GENERATED_BY, CONTROLS, CONTROLLED_
 enum class ChangeRole { SUPPLEMENT, REINFORCE, DRAIN, RESTRAIN, DISTURB, TIE, BACKGROUND }
 enum class EvidenceChannel { STEM, BRANCH }
 
+data class EnergyAvailability(
+    val expressed: Boolean,
+    val rooted: Boolean,
+    val available: Boolean,
+    val restricted: Boolean,
+    val description: String
+)
+
+/** One independently inspectable path; the summary's focal layer never filters these out. */
+data class ImpactPath(
+    val id: String,
+    val order: Int,
+    val sourceLabel: String,
+    val sourceGanZhi: String,
+    val sourceGan: String,
+    val sourceElement: String,
+    val targetLabel: String,
+    val targetGanZhi: String,
+    val targetGan: String,
+    val targetElement: String,
+    val targetNatal: Boolean,
+    val channel: EvidenceChannel,
+    val relation: EnergyRelation,
+    val techniques: Set<String>,
+    val natalAnchors: Set<String>,
+    val inheritedPathIds: List<String>,
+    val sourceAtEntry: EnergyAvailability,
+    val targetAtEntry: EnergyAvailability,
+    val evidence: String,
+    val hiddenTarget: Boolean = false
+)
+
 data class LayerAnalysisV5(
     val order: Int,
     val layer: String,
@@ -44,7 +76,8 @@ data class LayerAnalysisV5(
     val evidence: List<String> = emptyList(),
     val sourceAvailable: Boolean = false,
     val sourceRestricted: Boolean = false,
-    val inheritedFrom: List<String> = emptyList()
+    val inheritedFrom: List<String> = emptyList(),
+    val paths: List<ImpactPath> = emptyList()
 )
 
 data class ReadingV5(
@@ -64,10 +97,13 @@ data class ReadingV5(
     val triggerLayer: String? = null,
     val finalSourceAvailable: Boolean = false,
     val finalSourceRestricted: Boolean = false,
-    val finalSourceState: String = ""
+    val finalSourceState: String = "",
+    val finalEnergy: Map<String, EnergyAvailability> = emptyMap(),
+    val natalEnergy: Map<String, EnergyAvailability> = emptyMap()
 ) {
     fun focal(): LayerAnalysisV5? = layers.firstOrNull { it.layer == focalLayer }
         ?: layers.lastOrNull()
+    fun allPaths(): List<ImpactPath> = layers.flatMap { it.paths }
 }
 
 data class CalibrationV5(

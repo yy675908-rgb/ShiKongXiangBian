@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -135,6 +136,8 @@ private fun V6App(
     val grounded = remember(snapshot, reading) {
         if (snapshot != null && reading != null) EnergyGroundedInterpreter.interpret(snapshot, reading) else null
     }
+    var confirmedEventsRaw by rememberSaveable(dateText, birthText, gender, sect) { mutableStateOf("") }
+    val confirmedEvents = confirmedEventsRaw.split("\u001F").filter { it.isNotBlank() }.toSet()
     val judgment = remember(grounded) { grounded?.judgment ?: linkedMapOf() }
 
     Scaffold(
@@ -186,6 +189,10 @@ private fun V6App(
                 onActualText = { actualText = it },
                 lastCorrection = lastCorrection,
                 lastMemoryAfter = lastMemoryAfter,
+                confirmedEvents = confirmedEvents,
+                onConfirmEvent = { id, checked ->
+                    confirmedEventsRaw = (if (checked) confirmedEvents + id else confirmedEvents - id).sorted().joinToString("\u001F")
+                },
                 onSaveAndCalibrate = {
                     if (reading != null && grounded != null && actualText.isNotBlank()) {
                         val groundedForSave = grounded.copy(judgment = judgment)
@@ -193,7 +200,8 @@ private fun V6App(
                             signature = reading.signature,
                             grounded = groundedForSave,
                             actualEvent = actualText.trim(),
-                            memoryRaw = memoryRaw
+                            memoryRaw = memoryRaw,
+                            confirmedEventIds = confirmedEvents
                         )
                         memoryRaw = calibration.memoryRaw
                         onSaveMemory(memoryRaw)
@@ -239,6 +247,20 @@ private fun V6App(
                             appendLine("人事翻译：${grounded.tenGod.humanTranslation}")
                             appendLine("【应事判断】")
                             appendLine(judgment.entries.joinToString("；") { "${it.key}=${it.value}" })
+                            appendLine("【逐项可能应事】")
+                            grounded.events.forEachIndexed { index, event ->
+                                appendLine("${index + 1}. ${event.title}｜${event.priority.title}｜${event.timeWindow}")
+                                appendLine("可能：${event.possibilities.joinToString("；")}")
+                                appendLine("条件：${event.condition}")
+                                appendLine("不成立：${event.invalidIf}")
+                                appendLine("排序依据：${event.priorityReason}")
+                                event.natalContext.forEach { appendLine("原局：$it") }
+                                event.development.forEach { appendLine("承接：$it") }
+                                appendLine("原局承受点：${event.natalAnchors.joinToString("、")}；十神端点：${event.tenGods.joinToString("、")}")
+                                event.evidence.forEach { appendLine(it) }
+                            }
+                            appendLine("【条件性接续】")
+                            grounded.connections.forEach { appendLine("${it.description}；${it.condition}") }
                             appendLine("【预测前记忆】")
                             appendLine(reading.memoryBefore)
                             appendLine("§ACTUAL")
@@ -251,6 +273,7 @@ private fun V6App(
                         recordsRaw = if (recordsRaw.isBlank()) record else record + "\u001E" + recordsRaw
                         onSaveRecords(recordsRaw)
                         actualText = ""
+                        confirmedEventsRaw = ""
                     }
                 }
             )
@@ -289,6 +312,8 @@ private fun V6AnalysisPage(
     onActualText: (String) -> Unit,
     lastCorrection: String,
     lastMemoryAfter: String,
+    confirmedEvents: Set<String>,
+    onConfirmEvent: (String, Boolean) -> Unit,
     onSaveAndCalibrate: () -> Unit
 ) {
     LazyColumn(
@@ -333,7 +358,7 @@ private fun V6AnalysisPage(
             item { V6Image(grounded.image) }
             item { V6BodyUse(reading.bodyUse) }
             item { V6TenGod(grounded.tenGod) }
-            item { V6Judgment(judgment) }
+            item { V6Judgment(grounded) }
             item {
                 V6Section("个人记忆（预测前）") {
                     Text(reading.memoryBefore, lineHeight = 21.sp)
@@ -343,7 +368,7 @@ private fun V6AnalysisPage(
             }
             item {
                 V6Section("当天实际发生") {
-                    Text("只填写这一栏。前面的原局、能量、气势、象、体用、十神和应事全部由系统生成。", fontSize = 12.sp, color = Color.Gray)
+                    Text("填写实际经过，再勾选已发生的候选。前面的原始预测由系统生成并保留。", fontSize = 12.sp, color = Color.Gray)
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = actualText,
@@ -352,9 +377,18 @@ private fun V6AnalysisPage(
                         minLines = 4,
                         label = { Text("实际发生的事情、时间、地点、人物、结果") }
                     )
+                    if (actualText.isNotBlank() && grounded.events.isNotEmpty()) {
+                        V6Label("只勾选已实际发生的候选；不勾选表示尚未确认")
+                        grounded.events.forEach { event ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = event.id in confirmedEvents, onCheckedChange = { onConfirmEvent(event.id, it) })
+                                Text(event.title, modifier = Modifier.weight(1f), fontSize = 13.sp)
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(10.dp))
                     Button(onClick = onSaveAndCalibrate, enabled = actualText.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
-                        Text("保存并自动校正")
+                        Text("保存与逐项核对")
                     }
                 }
             }
@@ -521,12 +555,53 @@ private fun V6TenGod(tg: GroundedTenGod) {
 }
 
 @Composable
-private fun V6Judgment(judgment: LinkedHashMap<String, String>) {
+private fun V6Judgment(grounded: GroundedReading) {
+    var showPending by remember(grounded) { mutableStateOf(false) }
     V6Section("应事判断") {
-        judgment.forEach { (key, value) ->
-            Column(Modifier.padding(vertical = 5.dp)) {
-                Text(key, fontSize = 12.sp, color = GREEN_V6, fontWeight = FontWeight.Bold)
-                Text(value, lineHeight = 20.sp)
+        if (grounded.events.isEmpty()) {
+            Text("当前尚无可独立展开的动态应事路径。")
+        } else {
+            Text("以下为可能应事，可并行或在条件成立时接续。排序依据是结构条件。", fontSize = 12.sp, color = Color.Gray)
+            val pending = grounded.events.filter { it.priority == EventPriority.WATCH }
+            val main = grounded.events.filter { it.priority != EventPriority.WATCH }
+            val shown = if (main.isEmpty() || showPending) grounded.events else main
+            shown.forEach { event ->
+                V6EventCard(grounded.events.indexOf(event) + 1, event)
+            }
+            if (pending.isNotEmpty() && main.isNotEmpty()) {
+                TextButton(onClick = { showPending = !showPending }) { Text(if (showPending) "收起条件待补事项" else "展开条件待补事项（${pending.size}）") }
+            }
+            if (grounded.connections.isNotEmpty()) {
+                V6Label("共享作用依据的条件性接续")
+                grounded.connections.forEach { link ->
+                    val from = grounded.events.indexOfFirst { it.id == link.fromId } + 1
+                    val to = grounded.events.indexOfFirst { it.id == link.toId } + 1
+                    Text("$from → $to：${link.description}", fontSize = 13.sp, lineHeight = 19.sp)
+                }
+                Text("只有前项实际发生且需要后续处理，才可能接续。", fontSize = 12.sp, color = Color.Gray)
+            }
+        }
+    }
+}
+
+@Composable
+private fun V6EventCard(number: Int, event: EventPrediction) {
+    var expanded by remember(event) { mutableStateOf(false) }
+    Card(modifier = Modifier.fillMaxWidth().padding(top = 9.dp), colors = CardDefaults.cardColors(containerColor = BG_V6)) {
+        Column(Modifier.padding(12.dp)) {
+            Text("$number. ${event.title}", fontWeight = FontWeight.Bold, color = GREEN_V6)
+            Text("${event.priority.title} · ${event.domain.title} · ${event.timeWindow}", fontSize = 11.sp, color = Color.Gray)
+            event.possibilities.forEach { Text("• $it", lineHeight = 20.sp) }
+            if (event.conflictsWith.isNotEmpty()) Text("另有相反通路，需按各自条件区分。", fontSize = 12.sp, color = GREEN_V6)
+            TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起依据与条件" else "查看推导依据与条件") }
+            if (expanded) {
+                V6Sub("原局中本项的基础", event.natalContext.joinToString("\n"))
+                V6Sub("本项逐层承接 / 体用与十神", event.development.joinToString("\n"))
+                V6Sub("成立条件", event.condition)
+                V6Sub("不成立时", event.invalidIf)
+                V6Sub("排序依据", event.priorityReason)
+                V6Sub("本项承受点 / 十神", "${event.natalAnchors.sorted().joinToString("、")} / ${event.tenGods.sorted().joinToString("、")}")
+                event.evidence.forEach { Text("• $it", fontSize = 12.sp, lineHeight = 19.sp) }
             }
         }
     }

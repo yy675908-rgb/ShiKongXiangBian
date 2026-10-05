@@ -13,12 +13,15 @@ data class GroundedTenGod(
 data class GroundedReading(
     val image: String,
     val tenGod: GroundedTenGod,
-    val judgment: LinkedHashMap<String, String>
+    val judgment: LinkedHashMap<String, String>,
+    val events: List<EventPrediction> = emptyList(),
+    val connections: List<EventConnection> = emptyList()
 )
 
-/** Interpret the same focal node/field as the analysis; never rediscover a key by string search. */
+/** Main summary shares the focal field; parallel event paths are translated independently. */
 object EnergyGroundedInterpreter {
     fun interpret(snapshot: AnalysisSnapshot, reading: ReadingV5): GroundedReading {
+        val parallel = MultiEventPredictionEngine.predict(snapshot, reading)
         val key = reading.focal()?.copy(sourceAvailable = reading.finalSourceAvailable, sourceRestricted = reading.finalSourceRestricted)
         val element = key?.sourceElement ?: "未定"
         val tg = reading.tenGod
@@ -84,7 +87,15 @@ object EnergyGroundedInterpreter {
             else -> "阶段未定。"
         }
         judgment["成立条件"] = condition
-        return GroundedReading(image, GroundedTenGod(element, nature(element), state, relationToDay, tg, human, logic), judgment)
+        if (parallel.events.isNotEmpty()) {
+            judgment["事情类型"] = parallel.events.joinToString("；") { it.title }
+            judgment["领域"] = parallel.events.map { it.domain.title }.distinct().joinToString("、")
+            judgment["时间"] = "各项分别按自己的承接层与日/时作用观察，见逐项应事。"
+            judgment["主动被动"] = "每条作用路径分别看主体输出或外来承接，不能用一个主落点概括全部事项。"
+            judgment["内部外部"] = "各项保留各自原局承受点，不能把不同落点统一解释为同一事件。"
+            judgment["发展阶段"] = "可能并行；共享依据的事项仅在前项发生且需处理时接续。"
+        }
+        return GroundedReading(image, GroundedTenGod(element, nature(element), state, relationToDay, tg, human, logic), judgment, parallel.events, parallel.connections)
     }
 
     private fun humanBehavior(tg: String, key: LayerAnalysisV5?): String {
@@ -109,7 +120,7 @@ object EnergyGroundedInterpreter {
             else -> "具体领域未定"
         }
     }
-    private fun nature(element: String): String = when (element) {
+    internal fun nature(element: String): String = when (element) {
         "木" -> "生发、条达、伸展、疏泄、连接"
         "火" -> "温热、显化、上炎、扩散、照见"
         "土" -> "承载、聚合、转化、阻滞、中介"

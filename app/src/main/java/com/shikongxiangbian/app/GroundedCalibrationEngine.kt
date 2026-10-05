@@ -13,17 +13,25 @@ object GroundedCalibrationEngine {
         signature: String,
         grounded: GroundedReading,
         actualEvent: String,
-        memoryRaw: String
+        memoryRaw: String,
+        confirmedEventIds: Set<String> = emptySet()
     ): GroundedCalibration {
         val actualDomain = classifyActual(actualEvent)
         val predicted = grounded.judgment["领域"].orEmpty()
+        val confirmed = grounded.events.filter { it.id in confirmedEventIds }
         val result = when {
+            grounded.events.isNotEmpty() && confirmed.isNotEmpty() -> "人工确认"
+            grounded.events.isNotEmpty() -> "待逐项核对"
+            signature.startsWith("seq2-") -> "无具体候选"
             actualDomain == "其他" -> "待积累"
             domainMatches(predicted, actualDomain) -> "命中"
             related(predicted, actualDomain) -> "部分命中"
             else -> "偏离"
         }
         val text = when (result) {
+            "无具体候选" -> "实际事件已保存；本次未提供可逐项核对的具体预测，不能判断命中。"
+            "人工确认" -> "已确认${confirmed.size}/${grounded.events.size}项：${confirmed.joinToString("、") { it.title }}；其余尚未确认。保留所有原始候选和条件，不回写预测。"
+            "待逐项核对" -> "实际事件已保存；领域重合不能代替具体应事命中，请按已发生的事项逐项确认。原预测不改写。"
             "命中" -> "实际主要落在“${actualDomain}”，与本次经过能量链推导的应事领域一致；原始判断不改写，本次作为新样本追加。"
             "部分命中" -> "实际主要落在“${actualDomain}”，与本次能量→气象→体用→十神→应事链部分重合；保留原判断，追加校正样本。"
             "偏离" -> "实际主要落在“${actualDomain}”，与本次应事领域不同；不删除原判断、不覆盖旧记忆，仅把本次偏离追加到同类气象记录。"
@@ -34,7 +42,8 @@ object GroundedCalibrationEngine {
             predicted.replace("|", "/").replace("\n", " "),
             actualDomain,
             result,
-            actualEvent.replace("|", "/").replace("\n", " ")
+            actualEvent.replace("|", "/").replace("\n", " "),
+            confirmed.joinToString(",") { it.id.replace("|", "/") }
         ).joinToString("|")
         val updated = if (memoryRaw.isBlank()) line else memoryRaw.trimEnd() + "\n" + line
         return GroundedCalibration(

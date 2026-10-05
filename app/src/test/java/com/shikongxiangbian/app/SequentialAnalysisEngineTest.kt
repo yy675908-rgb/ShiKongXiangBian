@@ -90,7 +90,7 @@ class SequentialAnalysisEngineTest {
         val changed = r.copy(layers = r.layers.map { it.copy(mainRelation = "合冲刑害破克生得受聚散堵") })
         assertEquals(EnergyGroundedInterpreter.interpret(s, r), EnergyGroundedInterpreter.interpret(s, changed))
     }
-    @Test fun allOutputsShareOneFocalLayerAndDriver() {
+    @Test fun mainSummarySharesOneFocalLayerAndDriver() {
         val s = snapshot(dynamic = listOf("流年" to "甲辰", "流月" to "乙巳", "流日" to "丙午", "流时" to "丁未"), yun = "丙午")
         val r = read(s)
         val g = EnergyGroundedInterpreter.interpret(s, r)
@@ -122,7 +122,7 @@ class SequentialAnalysisEngineTest {
         val old = "旧规则|财务资源|财务资源|命中|买书"
         val s = snapshot(yun = "丙午")
         val r = V5AnalysisEngine.analyze(s, time, old)
-        assertTrue(r.signature.startsWith("seq1-"))
+        assertTrue(r.signature.startsWith("seq2-"))
         assertTrue(r.memoryBefore.contains("暂无同类"))
         val g = EnergyGroundedInterpreter.interpret(s, r)
         val saved = GroundedCalibrationEngine.calibrate(r.signature, g, "完成论文投稿", old)

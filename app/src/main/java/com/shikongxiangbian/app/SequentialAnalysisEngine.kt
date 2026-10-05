@@ -47,6 +47,7 @@ object SequentialAnalysisEngine {
         val restricted: Boolean get() = (expressed && visible.all { it.label in tiedStems }) || (rooted && roots.all { it.disturbed })
         fun brief(): String = "${element}：${if (expressed) "透于" + visible.joinToString("、") { it.label + it.gan } else "未透"}，${when { roots.any { it.main } -> "有本气根"; rooted -> "仅见余气根"; else -> "无直接根" }}${if (rooted) "（" + roots.joinToString("、") { it.node.label + it.node.zhi } + "）" else ""}，$season" +
             if (restricted) "〔通路受冲合，待检〕" else if (roots.any { it.disturbed } || tiedStems.isNotEmpty()) "〔局部冲合，另有承载〕" else ""
+        fun evidence() = EnergyAvailability(expressed, rooted, available, restricted, brief())
     }
     private data class Field(val nodes: List<Node>, val natalMonth: String, val currentMonth: String) {
         fun state(element: String, natalOnly: Boolean = false): ElementState {
@@ -265,6 +266,50 @@ object SequentialAnalysisEngine {
         if (incoming.label == "流月") add("当前时令由${before.currentMonth}转为${after.currentMonth}；原局${before.natalMonth}月令不改写")
     }
 
+    private fun impactPaths(index: Int, incoming: Node, before: Field, after: Field, previous: List<LayerAnalysisV5>, contacts: List<Contact>, newGroups: List<Group>): List<ImpactPath> {
+        val earlier = previous.flatMap { it.paths }
+        fun make(target: Node, sourceGan: String, targetGan: String, channel: EvidenceChannel, techniques: Set<String>, detail: String): ImpactPath {
+            val source = stems.getValue(sourceGan)
+            val targetElement = stems.getValue(targetGan)
+            val parents = if (target.natal) emptyList() else earlier.filter { it.sourceLabel == target.label && it.sourceGan == targetGan && it.channel == channel && it.natalAnchors.isNotEmpty() }
+            val anchors = if (target.natal) setOf(target.label) else parents.flatMap { it.natalAnchors }.toSet()
+            return ImpactPath(
+                id = listOf(incoming.label, incoming.gan + incoming.zhi, target.label, target.gan + target.zhi, channel.name, sourceGan, targetGan, techniques.sorted().joinToString(",")).joinToString(":"),
+                order = index + 1, sourceLabel = incoming.label, sourceGanZhi = incoming.gan + incoming.zhi,
+                sourceGan = sourceGan, sourceElement = source, targetLabel = target.label, targetGanZhi = target.gan + target.zhi,
+                targetGan = targetGan, targetElement = targetElement, targetNatal = target.natal, channel = channel,
+                relation = relation(source, targetElement), techniques = techniques, natalAnchors = anchors,
+                inheritedPathIds = parents.map { it.id }, sourceAtEntry = after.state(source).evidence(), targetAtEntry = after.state(targetElement).evidence(),
+                evidence = detail + " ${sourceGan}${source} → ${targetGan}${targetElement}：${relationText(source, targetElement)}。",
+                hiddenTarget = channel == EvidenceChannel.BRANCH
+            )
+        }
+        return buildList {
+            contacts.forEach { contact ->
+                if (contact.channel == EvidenceChannel.STEM) {
+                    add(make(contact.target, incoming.gan, contact.target.gan, contact.channel, contact.techniques, contact.detail))
+                } else {
+                    // Retain every hidden endpoint, even when unexpressed; the event translator distinguishes its readiness.
+                    contact.target.hiddenGan.forEach { targetGan ->
+                        add(make(contact.target, incoming.hiddenGan.first(), targetGan, contact.channel, contact.techniques, contact.detail))
+                    }
+                }
+            }
+            val day = before.nodes.first { it.label == "日柱" }
+            if (contacts.none { it.target.label == day.label && it.channel == EvidenceChannel.STEM }) {
+                add(make(day, incoming.gan, day.gan, EvidenceChannel.STEM, emptySet(), "干：${incoming.text}的显气与日主${day.gan}相接；${after.state(incoming.element).brief()}。"))
+            }
+            newGroups.forEach { group ->
+                val sourceGan = after.nodes.filter { it.zhi in group.branches }.flatMap { it.hiddenGan }.first { stems[it] == group.element }
+                before.nodes.filter { it.zhi in group.branches }.forEach { member ->
+                    member.hiddenGan.filter { stems[it] == group.element }.forEach { targetGan ->
+                        add(make(member, sourceGan, targetGan, EvidenceChannel.BRANCH, setOf(group.name), groupDetail(group, after)))
+                    }
+                }
+            }
+        }.distinctBy { it.id }
+    }
+
     private fun buildLayer(index: Int, incoming: Node, before: Field, after: Field, core: Core, previous: List<LayerAnalysisV5>): LayerAnalysisV5 {
         val allContacts = before.nodes.flatMap { contacts(incoming, it, after) }
         val inherited = previous.filter { it.affectsCore }.flatMap { listOf(it.layer, it.targetLabel) }.toSet()
@@ -333,7 +378,8 @@ object SequentialAnalysisEngine {
             repeatedTouch = continues.isNotEmpty(), priorState = before.brief(core), resultingState = resultState,
             condition = limit, relationKind = kind, changeRole = role, channel = channel, driverGan = driver,
             affectsCore = affects, techniques = techniques, evidence = evidence, sourceAvailable = sourceAvailable,
-            sourceRestricted = sourceRestricted, inheritedFrom = continues.map { it.layer }
+            sourceRestricted = sourceRestricted, inheritedFrom = continues.map { it.layer },
+            paths = impactPaths(index, incoming, before, after, previous, allContacts, newGroups)
         )
     }
 
@@ -345,6 +391,7 @@ object SequentialAnalysisEngine {
         var field = Field(natalNodes, month, month)
         val core = establishCore(field, snapshot.dayMaster)
         val natal = natalAnalysis(field, snapshot.dayMaster, core)
+        val natalEnergy = elements.associateWith { field.state(it).evidence() }
         val incoming = buildList {
             snapshot.daYun?.let { add(Node("大运", it.ganZhi.take(1), it.ganZhi.takeLast(1), false)) }
             listOf("流年", "流月", "流日", "流时").forEach { label -> snapshot.dynamic.firstOrNull { it.label == label }?.let { add(Node(label, it.gan, it.zhi, false)) } }
@@ -369,12 +416,15 @@ object SequentialAnalysisEngine {
         )
         // Versioned signature includes natal structure and condition; old broad keys do not silently mix.
         val finalSource = key?.let { field.state(it.sourceElement) }
-        val signature = listOf("seq1", natalNodes.joinToString("") { it.gan + it.zhi }, core.issue.name, core.focusElement, field.currentMonth, key?.sourceElement ?: "无", key?.changeRole?.name ?: "无", key?.targetLabel ?: "无", tenGod, key?.relationKind?.name ?: "无", finalSource?.available.toString(), finalSource?.restricted.toString()).joinToString("-")
+        val eventShape = layers.flatMap { it.paths }.map { listOf(it.sourceElement, it.targetElement, it.natalAnchors.sorted().joinToString(","), it.sourceLabel, it.channel.name, it.techniques.sorted().joinToString(",")).joinToString(":") }.distinct().sorted().joinToString("|")
+        val shapeHash = java.security.MessageDigest.getInstance("SHA-256").digest(eventShape.toByteArray(Charsets.UTF_8)).take(8).joinToString("") { "%02x".format(it) }
+        val signature = listOf("seq2", natalNodes.joinToString("") { it.gan + it.zhi }, core.issue.name, core.focusElement, field.currentMonth, key?.sourceElement ?: "无", key?.changeRole?.name ?: "无", key?.targetLabel ?: "无", tenGod, key?.relationKind?.name ?: "无", finalSource?.available.toString(), finalSource?.restricted.toString(), shapeHash).joinToString("-")
         val image = "原局${core.focusElement}承接轴上，${key?.let { "${it.layer}带来${roleName(it.changeRole)}" } ?: "尚无外来变化"}；${climate(field)}"
         val judgment = linkedMapOf("事情类型" to (key?.let { roleName(it.changeRole) } ?: "原局观察"), "领域" to tenGodDomain(tenGod))
         return ReadingV5(natal, layers, qi, image, bodyUse, tenGod, tenGodDomain(tenGod), judgment, signature,
             GroundedCalibrationEngine.memorySummary(memoryRaw, signature), key?.layer, chain, climate(field), trigger?.layer,
-            finalSource?.available ?: false, finalSource?.restricted ?: false, finalSource?.brief().orEmpty())
+            finalSource?.available ?: false, finalSource?.restricted ?: false, finalSource?.brief().orEmpty(),
+            elements.associateWith { field.state(it).evidence() }, natalEnergy)
     }
     fun roleName(role: ChangeRole): String = when (role) {
         ChangeRole.SUPPLEMENT -> "补入承接条件"
