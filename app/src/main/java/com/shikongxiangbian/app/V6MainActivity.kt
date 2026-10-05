@@ -473,10 +473,11 @@ private fun V6Energy(reading: ReadingV5) {
                         V6Sub("入场前", layer.priorState)
                         layer.technical.forEach { Text("• $it", lineHeight = 19.sp) }
                         V6Sub("入场后", layer.resultingState)
+                        V6Sub("成立条件", layer.condition)
                     }
                     Spacer(Modifier.height(7.dp))
                     V6Label("⑤ 承接下一层")
-                    Text(layer.condition, lineHeight = 20.sp)
+                    Text(layer.carryForward, lineHeight = 20.sp)
                 }
             }
         }

@@ -328,7 +328,7 @@ object SequentialAnalysisEngine {
             fieldEffect = (delta.ifEmpty { listOf("未新增焦点的透出或首次根气") }.joinToString("；")) + "。本层$complement。",
             focus = "${if (channel == EvidenceChannel.STEM) "显气" else "支气"}作用先看${target?.text ?: "整体场"}；${relationText(source, targetElement)}。${if (continues.isNotEmpty()) "承接" + continues.joinToString("、") { it.layer } + "的同一落点。" else ""}",
             technical = evidence.filter { it.startsWith("干：") || it.startsWith("支：") }.ifEmpty { listOf("无需另立技术主线；按已列透根与生克承接。") },
-            carryForward = resultState, sourceElement = source, targetElement = targetElement,
+            carryForward = "焦点${core.focusElement}：${when { after.state(core.focusElement).restricted -> "承载受冲合，待检"; after.state(core.focusElement).available -> "已具显性承接候选"; after.state(core.focusElement).rooted -> "有根但显性承接未充分成立"; else -> "承接条件仍待补" }}；${climateBase(after.currentMonth)}。", sourceElement = source, targetElement = targetElement,
             mainRelation = relationText(source, targetElement), targetLabel = target?.label ?: "整体场",
             repeatedTouch = continues.isNotEmpty(), priorState = before.brief(core), resultingState = resultState,
             condition = limit, relationKind = kind, changeRole = role, channel = channel, driverGan = driver,
