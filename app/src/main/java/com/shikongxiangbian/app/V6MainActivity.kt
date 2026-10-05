@@ -35,6 +35,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -134,16 +135,7 @@ private fun V6App(
     val grounded = remember(snapshot, reading) {
         if (snapshot != null && reading != null) EnergyGroundedInterpreter.interpret(snapshot, reading) else null
     }
-    val judgment = remember(reading, grounded) {
-        if (reading == null || grounded == null) linkedMapOf()
-        else LinkedHashMap(grounded.judgment).apply {
-            val oldDomain = reading.judgment["领域"].orEmpty()
-            val personal = oldDomain.substringAfter("个人历史同类气象更常落在：", "")
-            if (personal.isNotBlank()) {
-                this["领域"] = this["领域"].orEmpty() + "；个人历史校正：" + personal
-            }
-        }
-    }
+    val judgment = remember(grounded) { grounded?.judgment ?: linkedMapOf() }
 
     Scaffold(
         containerColor = BG_V6,
@@ -212,13 +204,26 @@ private fun V6App(
                             appendLine(dateText)
                             appendLine("§ORIGINAL")
                             appendLine("【原局能量基础】")
+                            appendLine(reading.natal.coreInsight)
+                            appendLine(reading.natal.season)
+                            appendLine(reading.natal.dayMasterContext)
+                            appendLine(reading.natal.rootsAndHidden)
+                            appendLine(reading.natal.sourceAndOutlet)
+                            appendLine(reading.natal.climate)
                             appendLine(reading.natal.energyFlow)
+                            appendLine("判断边界：${reading.natal.condition}")
+                            appendLine("【连续主线】")
+                            appendLine(reading.causalChain)
                             appendLine("【逐层能量变化】")
                             reading.layers.forEach { layer ->
                                 appendLine("${layer.order}. ${layer.layer}${layer.ganZhi}")
                                 appendLine("五行变化：${layer.energyChange}")
                                 appendLine("对既有场：${layer.fieldEffect}")
                                 appendLine("落点：${layer.focus}")
+                                appendLine("入场前：${layer.priorState}")
+                                appendLine("入场后：${layer.resultingState}")
+                                appendLine("依据：${layer.technical.joinToString("；")}")
+                                appendLine("成立条件：${layer.condition}")
                             }
                             appendLine("【气势】")
                             appendLine(reading.qi.joinToString("；"))
@@ -323,7 +328,7 @@ private fun V6AnalysisPage(
             item { V6TimeSpace(snapshot) }
             item { V6Natal(reading.natal) }
             item { V6Pipeline() }
-            item { V6Energy(reading.layers) }
+            item { V6Energy(reading) }
             item { V6Qi(reading.qi) }
             item { V6Image(grounded.image) }
             item { V6BodyUse(reading.bodyUse) }
@@ -409,15 +414,21 @@ private fun V6Pillars(pillars: List<PillarView>) {
 
 @Composable
 private fun V6Natal(natal: NatalAnalysisV5) {
+    var expanded by remember(natal) { mutableStateOf(false) }
     V6Section("原局分析 · 一切变化的基础") {
-        V6Sub("月令 / 时令基础", natal.season)
-        V6Sub("日主处境", natal.dayMasterContext)
-        V6Sub("根与藏干潜气", natal.rootsAndHidden)
-        V6Sub("能量来处与去处", natal.sourceAndOutlet)
+        V6Sub("原局认识 / 后续主线", natal.coreInsight)
         V6Sub("寒热燥湿底色", natal.climate)
-        V6Sub("原局能量走向", natal.energyFlow)
-        V6Label("技术关系（后看）")
-        natal.technical.forEach { Text("• $it", modifier = Modifier.padding(top = 4.dp), lineHeight = 20.sp) }
+        TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起原局依据" else "展开原局依据") }
+        if (expanded) {
+            V6Sub("月令 / 时令基础", natal.season)
+            V6Sub("日主处境", natal.dayMasterContext)
+            V6Sub("根与藏干潜气", natal.rootsAndHidden)
+            V6Sub("能量来处与去处", natal.sourceAndOutlet)
+            V6Sub("原局能量走向", natal.energyFlow)
+            V6Sub("判断边界", natal.condition)
+            V6Label("技术关系（后看）")
+            natal.technical.forEach { Text("• $it", modifier = Modifier.padding(top = 4.dp), lineHeight = 20.sp) }
+        }
     }
 }
 
@@ -434,9 +445,11 @@ private fun V6Pipeline() {
 }
 
 @Composable
-private fun V6Energy(layers: List<LayerAnalysisV5>) {
+private fun V6Energy(reading: ReadingV5) {
     V6Section("能量变化 · 逐层入场") {
-        layers.forEach { layer ->
+        V6Sub("连续主线", reading.causalChain)
+        reading.layers.forEach { layer ->
+            var expanded by remember(layer) { mutableStateOf(false) }
             Card(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
                 colors = CardDefaults.cardColors(containerColor = BG_V6),
@@ -455,10 +468,15 @@ private fun V6Energy(layers: List<LayerAnalysisV5>) {
                     Text(layer.focus, lineHeight = 20.sp)
                     Spacer(Modifier.height(7.dp))
                     V6Label("④ 技术依据（后看）")
-                    layer.technical.forEach { Text("• $it", lineHeight = 19.sp) }
+                    TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起依据与状态" else "查看依据与承接状态") }
+                    if (expanded) {
+                        V6Sub("入场前", layer.priorState)
+                        layer.technical.forEach { Text("• $it", lineHeight = 19.sp) }
+                        V6Sub("入场后", layer.resultingState)
+                    }
                     Spacer(Modifier.height(7.dp))
                     V6Label("⑤ 承接下一层")
-                    Text(layer.carryForward, lineHeight = 20.sp)
+                    Text(layer.condition, lineHeight = 20.sp)
                 }
             }
         }
@@ -476,8 +494,6 @@ private fun V6Qi(qi: List<String>) {
 private fun V6Image(image: String) {
     V6Section("取象") {
         Text(image, lineHeight = 21.sp)
-        Spacer(Modifier.height(7.dp))
-        Text("象直接从能量状态和气势来，不从十神名称倒推。", fontSize = 12.sp, color = Color.Gray)
     }
 }
 
