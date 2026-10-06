@@ -204,6 +204,7 @@ class AnalysisSession(
         val submitted = draft
         val previousRecords = recordsRaw
         val previousIndexed = records
+        val reservedUndoKey = deletionUndo?.record?.key
         val previousMemory = memory
         saving = true
         scope.launch {
@@ -214,7 +215,11 @@ class AnalysisSession(
                     val record = AnalysisRecordBuilder.build(captured, submitted.actual, calibration)
                     val raw = if (previousRecords.isBlank()) record else record + "\u001E" + previousRecords
                     // Stable keys survive deleting a duplicate and prepending a later save.
-                    val added = StoredAnalysisRecord("new:${java.util.UUID.randomUUID()}", record)
+                    val digest = recordDigest(record)
+                    val occurrence = (previousIndexed.map { it.key } + listOfNotNull(reservedUndoKey))
+                        .filter { it.startsWith("$digest:") }.mapNotNull { it.substringAfterLast(":").toIntOrNull() }
+                        .maxOrNull()?.plus(1) ?: 0
+                    val added = StoredAnalysisRecord("$digest:$occurrence", record)
                     Triple(calibration, raw, listOf(added) + previousIndexed)
                 }
                 // One transaction: record and calibration memory succeed or fail together.
@@ -241,12 +246,14 @@ class AnalysisSession(
         }
     }
 
+    private fun recordDigest(text: String): String = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+
     private fun indexRecords(raw: String): List<StoredAnalysisRecord> {
         val occurrences = mutableMapOf<String, Int>()
         return raw.split("\u001E").filter { it.isNotBlank() }.asReversed().map { text ->
             // Number from the oldest end: prepending a new record preserves every existing key.
-            val digest = java.security.MessageDigest.getInstance("SHA-256")
-                .digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+            val digest = recordDigest(text)
             val occurrence = occurrences.getOrDefault(digest, 0)
             occurrences[digest] = occurrence + 1
             StoredAnalysisRecord("$digest:$occurrence", text)

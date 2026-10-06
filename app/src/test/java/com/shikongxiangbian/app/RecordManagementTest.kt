@@ -132,6 +132,19 @@ class RecordManagementTest {
         assertEquals(listOf("B"), session.records.map { it.text })
     }
 
+    @Test fun newlySavedRecordKeysAreRecoverableAfterRestart() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val session = AnalysisSession(this, dispatcher, dispatcher, calculate = ::fixture)
+        session.initialize("重复旧记录\u001E重复旧记录", ""); session.request(input); advanceUntilIdle()
+        session.updateActual("新记录")
+        var raw = ""
+        var memory = ""
+        session.save { records, memo -> raw = records; memory = memo }; advanceUntilIdle()
+        val reloaded = AnalysisSession(this, dispatcher, dispatcher)
+        reloaded.initialize(raw, memory); advanceUntilIdle()
+        assertEquals(session.records, reloaded.records)
+    }
+
     @Test fun recordSearchUsesDateAndActualWithoutMatchingHiddenForecastText() {
         val record = StoredAnalysisRecord("k", "2026-08-08 12:00\n§SUMMARY\nforecast-only\n§ORIGINAL\noriginal\n§ACTUAL\nReceived BOOK\n§CALIBRATION\n人工确认｜details")
         assertEquals("Received BOOK", record.actual)
