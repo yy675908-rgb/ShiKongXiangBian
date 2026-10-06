@@ -28,6 +28,10 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
@@ -356,7 +360,7 @@ private fun V6AnalysisPage(
                 }
             }
             if (lastCorrection.isNotBlank()) item(key = "correction") { V6Section("校正与记忆") {
-                Text(lastCorrection, lineHeight = 21.sp)
+                V6AnalysisText(lastCorrection, lineHeight = 21.sp)
                 V6Sub("校正后记忆", lastMemoryAfter)
             } }
         }
@@ -418,9 +422,9 @@ private fun V6Natal(natal: NatalAnalysisV5) {
     var expanded by rememberSaveable(natal) { mutableStateOf(false) }
     V6Section("① 原局关键点") {
         if (natal.field.configurations.isNotEmpty()) V6Sub("整体气势", natal.field.overview())
-        Text(natal.keyPoint.ifBlank { natal.coreInsight }, lineHeight = 21.sp)
+        V6AnalysisText(natal.keyPoint.ifBlank { natal.coreInsight }, lineHeight = 21.sp, fontWeight = FontWeight.SemiBold)
         if (natal.followUp.isNotBlank()) V6Sub("后续看", natal.followUp)
-        TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起原局依据" else "展开原局依据") }
+        TextButton(onClick = { expanded = !expanded }) { V6AnalysisText(if (expanded) "收起原局依据" else "展开原局依据") }
         if (expanded) {
             V6Sub("完整认识", natal.coreInsight)
             V6Sub("寒热燥湿", natal.climate)
@@ -432,7 +436,7 @@ private fun V6Natal(natal: NatalAnalysisV5) {
             natal.circuits.forEach { V6Sub(it.name, it.description) }
             V6Sub("判断边界", natal.condition)
             V6Label("技术关系（后看）")
-            natal.technical.forEach { Text("• $it", modifier = Modifier.padding(top = 4.dp), lineHeight = 20.sp) }
+            natal.technical.forEach { V6AnalysisText("• $it", modifier = Modifier.padding(top = 4.dp), lineHeight = 20.sp) }
         }
     }
 }
@@ -441,15 +445,15 @@ private fun V6Natal(natal: NatalAnalysisV5) {
 private fun V6Pipeline() {
     var expanded by rememberSaveable { mutableStateOf(false) }
     V6Section("分析顺序与应事链", compact = true) {
-        Text("原局 → 大运 → 流年 → 流月 → 流日 → 流时", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
+        V6AnalysisText("原局 → 大运 → 流年 → 流月 → 流日 → 流时", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
         TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(0.dp)) {
-            Text(if (expanded) "收起方法" else "查看分析方法")
+            V6AnalysisText(if (expanded) "收起方法" else "查看分析方法")
         }
         if (expanded) {
-            Text("每层：能量进入 → 既有场怎样改变 → 整体气势怎样改变 → 合冲刑害破如何实现变化。", lineHeight = 20.sp)
+            V6AnalysisText("每层先看新加入的五行怎样影响原局、气势怎样改变，再看合冲刑害破。", lineHeight = 20.sp)
             Spacer(Modifier.height(6.dp))
-            Text("应事链：时空 ＋ 能量 ＋ 气象 ＋ 主客体用 ＋ 十神 → 应事", fontWeight = FontWeight.SemiBold)
-            Text("先看来源、承载、流向与耗用；十神服从组合中的实际作用，再逐项定位可能的事。", fontSize = 12.sp, color = Color.Gray)
+            V6AnalysisText("应事链：时空 ＋ 能量 ＋ 气象 ＋ 主客体用 ＋ 十神 → 应事", fontWeight = FontWeight.SemiBold)
+            V6AnalysisText("先看谁生谁、谁制谁，能否起作用及有何耗用；再结合十神判断可能发生的事。", fontSize = 12.sp, color = Color.Gray)
         }
     }
 }
@@ -459,17 +463,17 @@ private fun V6Layer(layer: LayerAnalysisV5, grounded: GroundedReading) {
     var expanded by rememberSaveable(layer) { mutableStateOf(false) }
     val domains = remember(layer, grounded) { AnalysisOutputFormatter.domains(layer, grounded) }
     V6Section("${layer.layer} ${layer.ganZhi}") {
-        Text(layer.summary.ifBlank { layer.focus }, lineHeight = 20.sp)
-        if (layer.configurationChanges.isNotEmpty()) Text("气势：${layer.configurationChanges.take(2).joinToString("；")}", fontSize = 13.sp, lineHeight = 20.sp, color = GREEN_V6)
-        if (domains.isNotBlank()) Text("涉及：$domains", fontSize = 12.sp, color = Color.Gray)
-        TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起" else "看本层依据") }
+        V6AnalysisText(layer.summary.ifBlank { layer.focus }, lineHeight = 20.sp)
+        if (layer.configurationChanges.isNotEmpty()) V6AnalysisText("组合变化：${AnalysisLanguage.changes(layer.configurationChanges).take(2).joinToString("；")}", fontSize = 13.sp, lineHeight = 20.sp, color = GREEN_V6)
+        if (domains.isNotBlank()) V6AnalysisText("涉及：$domains", fontSize = 12.sp, color = Color.Gray)
+        TextButton(onClick = { expanded = !expanded }) { V6AnalysisText(if (expanded) "收起" else "看本层依据") }
         if (expanded) {
             V6Sub("作用落点", layer.focus)
             V6Sub("进入前", layer.priorState)
             V6Sub("进入后", layer.resultingState)
             layer.field.configurations.forEach { V6Sub(it.name, it.describe()) }
             V6Sub("条件", layer.condition)
-            layer.technical.distinct().forEach { Text("• $it", fontSize = 12.sp, lineHeight = 19.sp) }
+            layer.technical.distinct().forEach { V6AnalysisText("• $it", fontSize = 12.sp, lineHeight = 19.sp) }
         }
     }
 }
@@ -478,7 +482,7 @@ private fun V6Layer(layer: LayerAnalysisV5, grounded: GroundedReading) {
 private fun V6Derivation(reading: ReadingV5, grounded: GroundedReading) {
     var expanded by rememberSaveable(reading) { mutableStateOf(false) }
     V6Section("推导明细") {
-        TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起完整推导" else "查看气势、体用与十神") }
+        TextButton(onClick = { expanded = !expanded }) { V6AnalysisText(if (expanded) "收起完整推导" else "查看气势、体用与十神") }
         if (expanded) {
             V6Qi(reading.qi)
             V6Image(grounded.image)
@@ -489,7 +493,7 @@ private fun V6Derivation(reading: ReadingV5, grounded: GroundedReading) {
                 }
             }
             V6TenGod(grounded.tenGod)
-            V6Sub("预测前记忆", reading.memoryBefore)
+            V6Sub("预测前记忆", reading.memoryBefore, readable = false)
         }
     }
 }
@@ -497,36 +501,36 @@ private fun V6Derivation(reading: ReadingV5, grounded: GroundedReading) {
 @Composable
 private fun V6Qi(qi: List<String>) {
     V6Section("气势") {
-        qi.forEach { Text("• $it", modifier = Modifier.padding(vertical = 2.dp), lineHeight = 20.sp) }
+        qi.forEach { V6AnalysisText("• $it", modifier = Modifier.padding(vertical = 2.dp), lineHeight = 20.sp) }
     }
 }
 
 @Composable
 private fun V6Image(image: String) {
     V6Section("取象") {
-        Text(image, lineHeight = 21.sp)
+        V6AnalysisText(image, lineHeight = 21.sp)
     }
 }
 
 @Composable
 private fun V6BodyUse(lines: List<String>) {
-    V6Section("主客体用") {
-        lines.forEach { Text("• $it", modifier = Modifier.padding(vertical = 2.dp), lineHeight = 20.sp) }
+    V6Section("主客体用 · 谁影响谁") {
+        lines.forEach { V6AnalysisText("• $it", modifier = Modifier.padding(vertical = 2.dp), lineHeight = 20.sp) }
     }
 }
 
 @Composable
 private fun V6TenGod(tg: GroundedTenGod) {
-    V6Section("十神 · 能量之后的人事翻译") {
+    V6Section("十神 · 对应的人与事") {
         V6Sub("① 能量本质 / 作用过程", tg.energyEssence)
         V6Sub("② 当前能量状态", tg.energyState)
         V6Sub("③ 五行描述 / 与日主关系", "${tg.element}｜${tg.elementNature}；${tg.relationToDayMaster}")
         V6Label("④ 十神")
-        Text(tg.tenGod, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
+        V6AnalysisText(tg.tenGod, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
         Spacer(Modifier.height(7.dp))
-        V6Sub("⑤ 人事翻译", tg.humanTranslation)
+        V6Sub("⑤ 对应的人与事", tg.humanTranslation)
         V6Label("推导链")
-        Text(tg.logic, lineHeight = 20.sp)
+        V6AnalysisText(tg.logic, lineHeight = 20.sp)
     }
 }
 
@@ -534,7 +538,7 @@ private fun V6TenGod(tg: GroundedTenGod) {
 private fun V6EventLinks(grounded: GroundedReading, shown: List<EventPrediction>, showPending: Boolean, onToggle: () -> Unit) {
     val pending = grounded.events.count { it.priority == EventPriority.WATCH }
     if (pending > 0) TextButton(onClick = onToggle) {
-        Text(if (showPending) "收起待补事项" else "查看待补事项（$pending）")
+        V6AnalysisText(if (showPending) "收起待补事项" else "查看待补事项（$pending）")
     }
     val shownIds = shown.map { it.id }.toSet()
     val links = grounded.connections.filter { it.fromId in shownIds && it.toId in shownIds }
@@ -542,9 +546,9 @@ private fun V6EventLinks(grounded: GroundedReading, shown: List<EventPrediction>
         links.forEach { link ->
             val from = grounded.events.indexOfFirst { it.id == link.fromId } + 1
             val to = grounded.events.indexOfFirst { it.id == link.toId } + 1
-            Text("$from → $to：${link.description}", fontSize = 13.sp, lineHeight = 19.sp)
+            V6AnalysisText("$from → $to：${link.description}", fontSize = 13.sp, lineHeight = 19.sp)
         }
-        Text("前项发生且需要处理，才看下一项。", fontSize = 12.sp, color = Color.Gray)
+        V6AnalysisText("前项发生且需要处理，才看下一项。", fontSize = 12.sp, color = Color.Gray)
     }
 }
 
@@ -557,14 +561,14 @@ private fun V6EventCard(number: Int, event: EventPrediction, reading: ReadingV5,
     val timeline = remember(event, reading, expanded) { if (expanded) AnalysisOutputFormatter.timeline(event, reading).joinToString("\n") else "" }
     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(12.dp)) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Text("$number. ${AnalysisOutputFormatter.title(event)}", fontWeight = FontWeight.Bold, color = GREEN_V6)
-            Text("${event.priority.title} · ${brief.window}", fontSize = 12.sp, color = Color.Gray)
-            Text(brief.outcome, lineHeight = 21.sp)
-            Text("依据：${brief.basis}", fontSize = 13.sp, lineHeight = 20.sp, color = GREEN_V6)
-            Text("前提：${brief.condition}", fontSize = 12.sp, lineHeight = 19.sp)
+            V6AnalysisText("$number. ${AnalysisOutputFormatter.title(event)}", fontWeight = FontWeight.Bold, color = GREEN_V6)
+            V6AnalysisText("${event.priority.title} · ${brief.window}", fontSize = 12.sp, color = Color.Gray)
+            V6AnalysisText(brief.outcome, lineHeight = 21.sp)
+            V6AnalysisText("依据：${brief.basis}", fontSize = 13.sp, lineHeight = 20.sp, color = GREEN_V6)
+            V6AnalysisText("前提：${brief.condition}", fontSize = 12.sp, lineHeight = 19.sp)
             val alternatives = allEvents.filter { it.id in event.conflictsWith }
-            if (alternatives.isNotEmpty()) Text("其他条件下：${alternatives.joinToString("、") { AnalysisOutputFormatter.title(it) }}", fontSize = 12.sp, color = GREEN_V6)
-            TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) { Text(if (expanded) "收起" else "看推导与不成立条件") }
+            if (alternatives.isNotEmpty()) V6AnalysisText("其他条件下：${alternatives.joinToString("、") { AnalysisOutputFormatter.title(it) }}", fontSize = 12.sp, color = GREEN_V6)
+            TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) { V6AnalysisText(if (expanded) "收起" else "看推导与不成立条件") }
             if (expanded) {
                 V6Sub("原局落点", foundation)
                 V6Sub("逐层作用", timeline)
@@ -573,10 +577,10 @@ private fun V6EventCard(number: Int, event: EventPrediction, reading: ReadingV5,
                 V6Sub("完整条件", event.condition)
                 V6Sub("不成立时", event.invalidIf)
                 V6Sub("为何这样排序", event.priorityReason)
-                TextButton(onClick = { auditExpanded = !auditExpanded }) { Text(if (auditExpanded) "收起技术记录" else "看原始技术记录") }
+                TextButton(onClick = { auditExpanded = !auditExpanded }) { V6AnalysisText(if (auditExpanded) "收起技术记录" else "看原始技术记录") }
                 if (auditExpanded) {
                     V6Sub("原局承载明细", event.natalContext.joinToString("\n"))
-                    event.evidence.distinct().forEach { Text("• $it", fontSize = 12.sp, lineHeight = 19.sp) }
+                    event.evidence.distinct().forEach { V6AnalysisText("• $it", fontSize = 12.sp, lineHeight = 19.sp) }
                 }
             }
         }
@@ -612,7 +616,7 @@ private fun V6RecordsPage(
             Text("应象记录 · ${records.size}", fontSize = 25.sp, fontWeight = FontWeight.Bold)
             Text("删除仅清理历史记录，校正记忆保留。", fontSize = 12.sp, color = Color.Gray)
             OutlinedTextField(value = query, onValueChange = onQuery, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                label = { Text("搜索日期或实际经过") }, singleLine = true,
+                label = { Text("搜索日期、干支或实际经过") }, singleLine = true,
                 leadingIcon = { Icon(Icons.Outlined.Search, null) },
                 trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { onQuery("") }) { Icon(Icons.Outlined.Close, "清空搜索") } },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -646,6 +650,8 @@ private fun V6RecordCard(record: StoredAnalysisRecord, busy: Boolean, onDelete: 
     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp)) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
             Text(record.date, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = INK_V6)
+            if (record.chart.current.isNotBlank()) Text("此时 · ${record.chart.current}", fontSize = 12.sp, lineHeight = 18.sp, color = GREEN_V6)
+            if (record.chart.daYun.isNotBlank()) Text("大运 ${record.chart.daYun}", fontSize = 12.sp, color = GREEN_V6)
             Text(record.result, fontSize = 12.sp, color = GREEN_V6)
             if (!expanded) Text(record.actual.ifBlank { "未填写实际经过" }, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -657,13 +663,14 @@ private fun V6RecordCard(record: StoredAnalysisRecord, busy: Boolean, onDelete: 
                 if (!text.contains("§ORIGINAL")) {
                     V6RecordSection("旧版记录", text.substringAfter("\n", text), BG_V6)
                 } else {
+                    if (record.chart.natal.isNotBlank()) V6RecordSection("本命", record.chart.natal, BG_V6)
                     val summary = remember(text) { text.substringBefore("§ORIGINAL").substringAfter("§SUMMARY", "").trim() }
                     V6RecordSection("实际经过", record.actual, BG_V6)
-                    if (summary.isNotBlank()) V6RecordSection("原始判断", summary, SOFT_V6)
+                    if (summary.isNotBlank()) V6RecordSection("原始判断", summary, SOFT_V6, formatted = true)
                     TextButton(onClick = { originalExpanded = !originalExpanded }) { Text(if (originalExpanded) "收起完整推导" else "查看完整推导") }
                     if (originalExpanded) {
                         val original = remember(text) { text.substringAfter("§ORIGINAL").substringBefore("§ACTUAL").trim() }
-                        V6RecordSection("完整原始判断", original, SOFT_V6)
+                        V6RecordSection("完整原始判断", original, SOFT_V6, formatted = true)
                     }
                     val calibration = remember(text) { text.substringAfter("§CALIBRATION").trim() }
                     V6RecordSection("校正与记忆", calibration, SOFT_V6)
@@ -674,12 +681,22 @@ private fun V6RecordCard(record: StoredAnalysisRecord, busy: Boolean, onDelete: 
 }
 
 @Composable
-private fun V6RecordSection(title: String, text: String, bg: Color) {
+private fun V6RecordSection(title: String, text: String, bg: Color, formatted: Boolean = false) {
     Card(colors = CardDefaults.cardColors(containerColor = bg), shape = RoundedCornerShape(12.dp)) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
             Text(title, fontSize = 13.sp, color = GREEN_V6, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
-            Text(text, lineHeight = 20.sp)
+            if (formatted) {
+                val lines = remember(text) { RecordPresentation.judgment(text) }
+                lines.forEachIndexed { index, line ->
+                    if (line.heading && index > 0) Spacer(Modifier.height(7.dp))
+                    val styled = remember(line) { buildAnnotatedString {
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(line.text.take(line.boldEnd)) }
+                        append(line.text.drop(line.boldEnd))
+                    } }
+                    Text(styled, lineHeight = 20.sp, modifier = Modifier.padding(bottom = 3.dp))
+                }
+            } else Text(text, lineHeight = 20.sp)
         }
     }
 }
@@ -756,15 +773,15 @@ private fun V6SettingsPage(
 }
 
 @Composable
-private fun V6Sub(title: String, text: String) {
-    Text(title, fontSize = 12.sp, color = GREEN_V6, fontWeight = FontWeight.Bold)
-    Text(text, lineHeight = 20.sp)
+private fun V6Sub(title: String, text: String, readable: Boolean = true) {
+    V6AnalysisText(title, fontSize = 12.sp, color = GREEN_V6, fontWeight = FontWeight.Bold)
+    if (readable) V6AnalysisText(text, lineHeight = 20.sp) else Text(text, lineHeight = 20.sp)
     Spacer(Modifier.height(8.dp))
 }
 
 @Composable
 private fun V6Label(text: String) {
-    Text(text, fontSize = 11.sp, color = GREEN_V6, fontWeight = FontWeight.Bold)
+    V6AnalysisText(text, fontSize = 11.sp, color = GREEN_V6, fontWeight = FontWeight.Bold)
 }
 
 @Composable
@@ -775,11 +792,20 @@ private fun V6Section(title: String, compact: Boolean = false, content: @Composa
         shape = RoundedCornerShape(18.dp)
     ) {
         Column(Modifier.padding(if (compact) 12.dp else 16.dp)) {
-            Text(title, fontSize = if (compact) 15.sp else 17.sp, fontWeight = FontWeight.Bold, color = INK_V6)
+            V6AnalysisText(title, fontSize = if (compact) 15.sp else 17.sp, fontWeight = FontWeight.Bold, color = INK_V6)
             Spacer(Modifier.height(if (compact) 6.dp else 9.dp))
             HorizontalDivider(color = LINE_V6)
             Spacer(Modifier.height(if (compact) 6.dp else 9.dp))
             content()
         }
     }
+}
+
+@Composable
+private fun V6AnalysisText(
+    text: String, modifier: Modifier = Modifier, fontSize: TextUnit = TextUnit.Unspecified,
+    lineHeight: TextUnit = TextUnit.Unspecified, fontWeight: FontWeight? = null, color: Color = Color.Unspecified
+) {
+    val readable = remember(text) { AnalysisLanguage.text(text) }
+    Text(readable, modifier = modifier, fontSize = fontSize, lineHeight = lineHeight, fontWeight = fontWeight, color = color)
 }

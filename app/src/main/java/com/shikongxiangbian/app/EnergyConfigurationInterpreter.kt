@@ -12,13 +12,19 @@ data class ConfigurationBinding(val endpoints: List<EnergyEndpoint>) {
 
 data class EnergyConfiguration(
     val name: String, val elements: List<String>, val relations: List<EnergyRelation>,
-    val bindings: List<ConfigurationBinding>, val meaning: String
+    val bindings: List<ConfigurationBinding>, val meaning: String,
+    val missingElements: List<String> = emptyList()
 ) {
     val ready: Boolean get() = bindings.any { it.ready }
     val status: String get() = when {
         ready -> "显性节点有承载，效力待比较"
-        bindings.isEmpty() -> "显性节点未齐"
-        else -> "承载受牵或待补"
+        bindings.isEmpty() -> if (missingElements.isEmpty()) "相关天干未透齐" else {
+            val absent = missingElements.map { if (name == "同类分用资源" && it == elements.first()) "同类天干" else it }
+            "${absent.joinToString("、")}未透出"
+        }
+        else -> bindings.first().endpoints.filterNot { it.ready }.joinToString("；") {
+            it.text + when { !it.state.expressed -> "未透出"; it.state.restricted -> "受冲合影响"; else -> "根气或生扶不足" }
+        }
     }
     val direction: String get() = elements.mapIndexed { i, e ->
         if (i == 0) e else (if (relations[i - 1] == EnergyRelation.CONTROLS) " 制 " else " → ") + e
@@ -63,7 +69,7 @@ object EnergyConfigurationInterpreter {
             }
             EnergyConfiguration(name, route, route.zipWithNext { a, b ->
                 if (generate[a] == b) EnergyRelation.GENERATES else EnergyRelation.CONTROLS
-            }, combinations.map { ConfigurationBinding(it) }, meaning)
+            }, combinations.map { ConfigurationBinding(it) }, meaning, route.filterIndexed { i, _ -> choices[i].isEmpty() })
         })
     }
 

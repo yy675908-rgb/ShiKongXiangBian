@@ -129,22 +129,29 @@ object AnalysisOutputFormatter {
             "${path.targetLabel}${path.targetGan}（${if (path.channel == EvidenceChannel.STEM) "干" else "支"}·$status）"
         }
 
-    fun summary(reading: ReadingV5, grounded: GroundedReading): String = buildString {
-        if (reading.natal.field.configurations.isNotEmpty()) appendLine("原局气势：${reading.natal.field.overview()}")
-        appendLine("原局：${reading.natal.keyPoint.ifBlank { reading.natal.coreInsight }}")
+    fun summary(reading: ReadingV5, grounded: GroundedReading): String = AnalysisLanguage.text(buildString {
+        appendLine("【原局】")
+        if (reading.natal.field.configurations.isNotEmpty()) appendLine("整体组合：${reading.natal.field.overview()}")
+        appendLine("关键点：${reading.natal.keyPoint.ifBlank { reading.natal.coreInsight }}")
         if (reading.natal.followUp.isNotBlank()) appendLine("后续看：${reading.natal.followUp}")
         reading.layers.forEach {
-            appendLine("${it.layer}${it.ganZhi}：${it.summary.ifBlank { it.focus }}")
-            if (it.configurationChanges.isNotEmpty()) appendLine("气势变化：${it.configurationChanges.joinToString("；")}")
+            appendLine()
+            appendLine("【${it.layer}${it.ganZhi}】")
+            appendLine(it.summary.ifBlank { it.focus })
+            AnalysisLanguage.changes(it.configurationChanges).forEach { change -> appendLine("组合变化：$change") }
         }
+        appendLine()
+        appendLine("【可能发生的事】")
         val main = grounded.events.filter { it.priority != EventPriority.WATCH }
-        if (main.isEmpty()) appendLine("近期事项：目前没有条件较齐的路径。")
-        main.forEach { e ->
+        if (main.isEmpty()) appendLine("目前没有条件较齐的近期事项。")
+        main.forEachIndexed { index, e ->
             val brief = event(e, reading)
-            appendLine("${title(e)}（${brief.window}）：${brief.outcome}")
-            appendLine("依据：${brief.basis}；前提：${brief.condition}")
+            appendLine("${index + 1}. ${title(e)}｜${brief.window}")
+            appendLine(brief.outcome)
+            appendLine("依据：${brief.basis}")
+            appendLine("前提：${brief.condition}")
         }
         val pending = grounded.events.count { it.priority == EventPriority.WATCH }
-        if (pending > 0) appendLine("另有 $pending 项条件待补，见完整推导。")
-    }.trimEnd()
+        if (pending > 0) appendLine("另有 $pending 项尚缺条件，见完整推导。")
+    }.trimEnd())
 }

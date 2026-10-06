@@ -8,6 +8,10 @@ object AnalysisRecordBuilder {
         val judgment = grounded.judgment
         return buildString {
             appendLine(forecast.input.date)
+            appendLine("§CHART")
+            appendLine("本命 " + forecast.snapshot.natal.joinToString(" · ") { "${it.label}${it.ganZhi}" })
+            forecast.snapshot.daYun?.let { appendLine("大运 ${it.ganZhi} ${it.startYear}–${it.endYear}") }
+            forecast.snapshot.dynamic.forEach { appendLine("${it.label} ${it.ganZhi}") }
             appendLine("§SUMMARY")
             appendLine(AnalysisOutputFormatter.summary(reading, grounded))
             appendLine("§ORIGINAL")
@@ -78,6 +82,10 @@ object AnalysisRecordBuilder {
             appendLine("${calibration.result}｜${calibration.text}")
             appendLine("【校正后记忆】")
             appendLine(calibration.memoryAfter)
-        }.trimEnd()
+        }.trimEnd().let { record ->
+            // Normalize generated analysis only; feedback and recorded memory stay verbatim.
+            val boundary = record.indexOf("【预测前记忆】")
+            AnalysisLanguage.text(record.substring(0, boundary)) + record.substring(boundary)
+        }
     }
 }

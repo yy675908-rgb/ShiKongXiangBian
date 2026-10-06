@@ -37,13 +37,14 @@ data class CompletedForecast(val input: ForecastInput, val snapshot: AnalysisSna
 data class FeedbackDraft(val actual: String = "", val confirmed: Set<String> = emptySet())
 data class SessionNotice(val id: Long, val text: String, val saved: Boolean, val undoId: Long? = null)
 data class StoredAnalysisRecord(val key: String, val text: String) {
+    val chart = RecordPresentation.chart(text)
     val date = text.lineSequence().firstOrNull().orEmpty()
     val actual = if (text.contains("§ACTUAL")) text.substringAfter("§ACTUAL").substringBefore("§CALIBRATION").trim()
         else text.substringAfter("\n", text).trim()
     val result = if (text.contains("§CALIBRATION")) text.substringAfter("§CALIBRATION").trimStart()
         .lineSequence().firstOrNull().orEmpty().substringBefore("｜").trim() else "旧版记录"
     fun matches(query: String): Boolean = query.trim().let { it.isEmpty() ||
-        date.contains(it, ignoreCase = true) || actual.contains(it, ignoreCase = true) || result.contains(it, ignoreCase = true) }
+        date.contains(it, ignoreCase = true) || chart.current.contains(it, ignoreCase = true) || chart.daYun.contains(it, ignoreCase = true) || actual.contains(it, ignoreCase = true) || result.contains(it, ignoreCase = true) }
 }
 data class RecordDeletion(val id: Long, val record: StoredAnalysisRecord, val precedingKey: String?,
     val followingKey: String?, val distanceFromEnd: Int)
