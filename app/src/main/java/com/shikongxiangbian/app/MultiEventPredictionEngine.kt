@@ -31,7 +31,9 @@ data class EventPrediction(
     val conflictsWith: Set<String> = emptySet(),
     val endpointKeys: Set<String> = emptySet(),
     val keyBasis: String = "",
-    val energyProcess: List<String> = emptyList()
+    val energyProcess: List<String> = emptyList(),
+    val keyPathId: String = "",
+    val hasUsableWindow: Boolean = false
 )
 
 data class EventConnection(val fromId: String, val toId: String, val description: String, val condition: String)
@@ -128,7 +130,8 @@ object MultiEventPredictionEngine {
                     "${p.sourceLabel}${p.sourceGanZhi}：${p.sourceGan}${p.sourceElement}（$sourceGod；${EnergyGroundedInterpreter.nature(p.sourceElement)}）经${if (p.channel == EvidenceChannel.STEM) "显气" else "支气承载"}${p.techniques.sorted().joinToString("/", prefix = if (p.techniques.isEmpty()) "" else "·")}作用于${p.targetLabel}${p.targetGanZhi}的${p.targetGan}${p.targetElement}（$targetGod）；${relationMeaning(p.relation)}。${if (p.targetNatal) "本命为体，此层为用" else "先作用前层，再沿已建立通路承接本命"}。"
                 }, endpointKeys = evidencePaths.flatMap { endpointKeys(it) }.toSet(),
                 keyBasis = "${EnergyEssenceInterpreter.process(latest, reading).mechanism}；${latest.techniques.sorted().joinToString("/", postfix = if (latest.techniques.isEmpty()) "" else "，")}${if (!usable(latest)) "本项承载待补" else "结果仍看承接条件"}",
-                energyProcess = routes.map { EnergyEssenceInterpreter.process(it, reading).describe() }.distinct()
+                energyProcess = routes.map { EnergyEssenceInterpreter.process(it, reading).describe() }.distinct(),
+                keyPathId = latest.id, hasUsableWindow = usablePaths.isNotEmpty()
             )
         }
         // Opposed readings remain explicit alternatives; don't call both equally certain.

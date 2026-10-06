@@ -210,6 +210,8 @@ private fun V6App(
 
                         val record = buildString {
                             appendLine(dateText)
+                            appendLine("§SUMMARY")
+                            appendLine(AnalysisOutputFormatter.summary(reading, grounded))
                             appendLine("§ORIGINAL")
                             appendLine("【原局能量基础】")
                             appendLine(reading.natal.coreInsight)
@@ -356,23 +358,12 @@ private fun V6AnalysisPage(
         } else {
             item { V6TimeSpace(snapshot) }
             item { V6Natal(reading.natal) }
-            item { V6Pipeline() }
-            item { V6Energy(reading) }
-            item { V6Qi(reading.qi) }
-            item { V6Image(grounded.image) }
-            item { V6BodyUse(reading.bodyUse) }
-            item { V6TenGod(grounded.tenGod) }
-            item { V6Judgment(grounded) }
-            item {
-                V6Section("个人记忆（预测前）") {
-                    Text(reading.memoryBefore, lineHeight = 21.sp)
-                    Spacer(Modifier.height(5.dp))
-                    Text("属于本次原始预测，保存实际事件后不覆盖。", fontSize = 12.sp, color = Color.Gray)
-                }
-            }
+            item { V6Energy(reading, grounded) }
+            item { V6Judgment(grounded, reading) }
+            item { V6Derivation(reading, grounded) }
             item {
                 V6Section("当天实际发生") {
-                    Text("填写实际经过，再勾选已发生的候选。前面的原始预测由系统生成并保留。", fontSize = 12.sp, color = Color.Gray)
+                    Text("记录实际经过，勾选已发生的事项。", fontSize = 12.sp, color = Color.Gray)
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = actualText,
@@ -382,11 +373,10 @@ private fun V6AnalysisPage(
                         label = { Text("实际发生的事情、时间、地点、人物、结果") }
                     )
                     if (actualText.isNotBlank() && grounded.events.isNotEmpty()) {
-                        V6Label("只勾选已实际发生的候选；不勾选表示尚未确认")
                         grounded.events.forEach { event ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(checked = event.id in confirmedEvents, onCheckedChange = { onConfirmEvent(event.id, it) })
-                                Text(event.title, modifier = Modifier.weight(1f), fontSize = 13.sp)
+                                Text(AnalysisOutputFormatter.title(event), modifier = Modifier.weight(1f), fontSize = 13.sp)
                             }
                         }
                     }
@@ -396,16 +386,12 @@ private fun V6AnalysisPage(
                     }
                 }
             }
-            item {
+            if (lastCorrection.isNotBlank()) item {
                 V6Section("校正与记忆") {
-                    if (lastCorrection.isBlank()) {
-                        Text("保存后只在这里追加校正；前面的原始判断和旧记忆不会被删。", color = Color.Gray)
-                    } else {
-                        Text(lastCorrection, lineHeight = 21.sp)
-                        Spacer(Modifier.height(10.dp))
-                        V6Label("校正后记忆")
-                        Text(lastMemoryAfter, lineHeight = 21.sp)
-                    }
+                    Text(lastCorrection, lineHeight = 21.sp)
+                    Spacer(Modifier.height(10.dp))
+                    V6Label("校正后记忆")
+                    Text(lastMemoryAfter, lineHeight = 21.sp)
                 }
             }
         }
@@ -426,8 +412,6 @@ private fun V6TimeSpace(snapshot: AnalysisSnapshot) {
         }
         Text("流年 · 流月 · 流日 · 流时", fontSize = 12.sp, color = Color.Gray)
         V6Pillars(snapshot.dynamic)
-        Spacer(Modifier.height(7.dp))
-        Text("这里不提前贴十神标签，避免先入为主。", fontSize = 12.sp, color = Color.Gray)
     }
 }
 
@@ -453,15 +437,13 @@ private fun V6Pillars(pillars: List<PillarView>) {
 @Composable
 private fun V6Natal(natal: NatalAnalysisV5) {
     var expanded by remember(natal) { mutableStateOf(false) }
-    V6Section("原局分析 · 一切变化的基础") {
-        V6Sub("原局认识 / 后续主线", natal.coreInsight)
-        if (natal.circuits.isNotEmpty()) V6Sub("整体通路", natal.circuits.joinToString("；") { circuit ->
-            "${circuit.name}：" + if (circuit.stages.all { it.available }) "显性节点有承载" else
-                circuit.stages.filter { !it.available }.joinToString("、") { it.element } + "待接"
-        })
-        V6Sub("寒热燥湿底色", natal.climate)
+    V6Section("① 原局关键点") {
+        Text(natal.keyPoint.ifBlank { natal.coreInsight }, lineHeight = 21.sp)
+        if (natal.followUp.isNotBlank()) V6Sub("后续看", natal.followUp)
         TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起原局依据" else "展开原局依据") }
         if (expanded) {
+            V6Sub("完整认识", natal.coreInsight)
+            V6Sub("寒热燥湿", natal.climate)
             V6Sub("月令 / 时令基础", natal.season)
             V6Sub("日主处境", natal.dayMasterContext)
             V6Sub("根与藏干潜气", natal.rootsAndHidden)
@@ -488,41 +470,43 @@ private fun V6Pipeline() {
 }
 
 @Composable
-private fun V6Energy(reading: ReadingV5) {
-    V6Section("能量变化 · 逐层入场") {
-        V6Sub("连续主线", reading.causalChain)
+private fun V6Energy(reading: ReadingV5, grounded: GroundedReading) {
+    V6Section("② 逐层变化") {
         reading.layers.forEach { layer ->
             var expanded by remember(layer) { mutableStateOf(false) }
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
-                colors = CardDefaults.cardColors(containerColor = BG_V6),
-                shape = RoundedCornerShape(13.dp)
-            ) {
+            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = BG_V6), shape = RoundedCornerShape(13.dp)) {
                 Column(Modifier.padding(12.dp)) {
-                    Text("${layer.order}. ${layer.layer} ${layer.ganZhi}", fontWeight = FontWeight.Bold, color = GREEN_V6)
-                    Spacer(Modifier.height(7.dp))
-                    V6Label("① 能量作用变化")
-                    Text(layer.energyChange, lineHeight = 20.sp)
-                    Spacer(Modifier.height(7.dp))
-                    V6Label("② 对既有场的改变")
-                    Text(layer.fieldEffect, lineHeight = 20.sp)
-                    Spacer(Modifier.height(7.dp))
-                    V6Label("③ 变化落点")
-                    Text(layer.focus, lineHeight = 20.sp)
-                    Spacer(Modifier.height(7.dp))
-                    V6Label("④ 技术依据（后看）")
-                    TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起依据与状态" else "查看依据与承接状态") }
+                    Text("${layer.layer} ${layer.ganZhi}", fontWeight = FontWeight.Bold, color = GREEN_V6)
+                    Text(layer.summary.ifBlank { layer.focus }, lineHeight = 20.sp)
+                    val domains = AnalysisOutputFormatter.domains(layer, grounded)
+                    if (domains.isNotBlank()) Text("涉及：$domains", fontSize = 12.sp, color = Color.Gray)
+                    TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起" else "看本层依据") }
                     if (expanded) {
-                        V6Sub("入场前", layer.priorState)
-                        layer.technical.forEach { Text("• $it", lineHeight = 19.sp) }
-                        V6Sub("入场后", layer.resultingState)
-                        V6Sub("成立条件", layer.condition)
+                        V6Sub("作用落点", layer.focus)
+                        V6Sub("进入前", layer.priorState)
+                        V6Sub("进入后", layer.resultingState)
+                        V6Sub("条件", layer.condition)
+                        layer.technical.distinct().forEach { Text("• $it", fontSize = 12.sp, lineHeight = 19.sp) }
                     }
-                    Spacer(Modifier.height(7.dp))
-                    V6Label("⑤ 承接下一层")
-                    Text(layer.carryForward, lineHeight = 20.sp)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun V6Derivation(reading: ReadingV5, grounded: GroundedReading) {
+    var expanded by remember(reading) { mutableStateOf(false) }
+    V6Section("推导明细") {
+        TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起完整推导" else "查看气势、体用与十神") }
+        if (expanded) {
+            V6Pipeline()
+            V6Qi(reading.qi)
+            V6Image(grounded.image)
+            V6BodyUse(reading.bodyUse)
+            V6TenGod(grounded.tenGod)
+            V6Sub("预测前记忆", reading.memoryBefore)
         }
     }
 }
@@ -564,57 +548,59 @@ private fun V6TenGod(tg: GroundedTenGod) {
 }
 
 @Composable
-private fun V6Judgment(grounded: GroundedReading) {
+private fun V6Judgment(grounded: GroundedReading, reading: ReadingV5) {
     var showPending by remember(grounded) { mutableStateOf(false) }
-    V6Section("应事判断") {
-        if (grounded.events.isEmpty()) {
-            Text("当前尚无可独立展开的动态应事路径。")
-        } else {
-            Text("以下为可能应事，可并行或在条件成立时接续。排序依据是结构条件。", fontSize = 12.sp, color = Color.Gray)
-            val pending = grounded.events.filter { it.priority == EventPriority.WATCH }
-            val main = grounded.events.filter { it.priority != EventPriority.WATCH }
-            val shown = if (main.isEmpty() || showPending) grounded.events else main
-            shown.forEach { event ->
-                V6EventCard(grounded.events.indexOf(event) + 1, event)
+    V6Section("③ 可能应事") {
+        val pending = grounded.events.filter { it.priority == EventPriority.WATCH }
+        val main = grounded.events.filter { it.priority != EventPriority.WATCH }
+        if (main.isEmpty()) Text("目前没有条件较齐的近期事项。", color = Color.Gray)
+        val shown = if (showPending) grounded.events else main
+        shown.forEach { event -> V6EventCard(grounded.events.indexOf(event) + 1, event, reading, grounded.events) }
+        if (pending.isNotEmpty()) {
+            TextButton(onClick = { showPending = !showPending }) {
+                Text(if (showPending) "收起待补事项" else "查看待补事项（${pending.size}）")
             }
-            if (pending.isNotEmpty() && main.isNotEmpty()) {
-                TextButton(onClick = { showPending = !showPending }) { Text(if (showPending) "收起条件待补事项" else "展开条件待补事项（${pending.size}）") }
+        }
+        val shownIds = shown.map { it.id }.toSet()
+        val links = grounded.connections.filter { it.fromId in shownIds && it.toId in shownIds }
+        if (links.isNotEmpty()) {
+            V6Label("可能接续")
+            links.forEach { link ->
+                val from = grounded.events.indexOfFirst { it.id == link.fromId } + 1
+                val to = grounded.events.indexOfFirst { it.id == link.toId } + 1
+                Text("$from → $to：${link.description}", fontSize = 13.sp, lineHeight = 19.sp)
             }
-            val shownIds = shown.map { it.id }.toSet()
-            val shownLinks = grounded.connections.filter { it.fromId in shownIds && it.toId in shownIds }
-            if (shownLinks.isNotEmpty()) {
-                V6Label("共享作用依据的条件性接续")
-                shownLinks.forEach { link ->
-                    val from = grounded.events.indexOfFirst { it.id == link.fromId } + 1
-                    val to = grounded.events.indexOfFirst { it.id == link.toId } + 1
-                    Text("$from → $to：${link.description}", fontSize = 13.sp, lineHeight = 19.sp)
-                }
-                Text("只有前项实际发生且需要后续处理，才可能接续。", fontSize = 12.sp, color = Color.Gray)
-            }
+            Text("前项发生且需要处理，才看下一项。", fontSize = 12.sp, color = Color.Gray)
         }
     }
 }
 
 @Composable
-private fun V6EventCard(number: Int, event: EventPrediction) {
+private fun V6EventCard(number: Int, event: EventPrediction, reading: ReadingV5, allEvents: List<EventPrediction>) {
     var expanded by remember(event) { mutableStateOf(false) }
+    var auditExpanded by remember(event) { mutableStateOf(false) }
+    val brief = remember(event, reading) { AnalysisOutputFormatter.event(event, reading) }
     Card(modifier = Modifier.fillMaxWidth().padding(top = 9.dp), colors = CardDefaults.cardColors(containerColor = BG_V6)) {
         Column(Modifier.padding(12.dp)) {
-            Text("$number. ${event.title}", fontWeight = FontWeight.Bold, color = GREEN_V6)
-            Text("${event.priority.title} · ${event.domain.title} · ${event.timeWindow}", fontSize = 11.sp, color = Color.Gray)
-            Text(event.keyBasis, fontSize = 12.sp, lineHeight = 18.sp, color = GREEN_V6)
-            event.possibilities.forEach { Text("• $it", lineHeight = 20.sp) }
-            if (event.conflictsWith.isNotEmpty()) Text("另有相反通路，需按各自条件区分。", fontSize = 12.sp, color = GREEN_V6)
-            TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起依据与条件" else "查看推导依据与条件") }
+            Text("$number. ${AnalysisOutputFormatter.title(event)}", fontWeight = FontWeight.Bold, color = GREEN_V6)
+            Text("${event.priority.title} · ${brief.window}", fontSize = 12.sp, color = Color.Gray)
+            Text(brief.outcome, lineHeight = 21.sp)
+            Text("依据：${brief.basis}", fontSize = 13.sp, lineHeight = 20.sp, color = GREEN_V6)
+            Text("前提：${brief.condition}", fontSize = 12.sp, lineHeight = 19.sp)
+            val alternatives = allEvents.filter { it.id in event.conflictsWith }
+            if (alternatives.isNotEmpty()) Text("其他条件下：${alternatives.joinToString("、") { AnalysisOutputFormatter.title(it) }}", fontSize = 12.sp, color = GREEN_V6)
+            TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起" else "看推导与不成立条件") }
             if (expanded) {
-                V6Sub("原局中本项的基础", event.natalContext.joinToString("\n"))
-                V6Sub("本项能量本质 / 作用与耗用", event.energyProcess.joinToString("\n"))
-                V6Sub("本项逐层承接 / 体用与十神", event.development.joinToString("\n"))
-                V6Sub("成立条件", event.condition)
+                V6Sub("原局落点", AnalysisOutputFormatter.foundation(event, reading))
+                V6Sub("逐层作用", AnalysisOutputFormatter.timeline(event, reading).joinToString("\n"))
+                V6Sub("完整条件", event.condition)
                 V6Sub("不成立时", event.invalidIf)
-                V6Sub("排序依据", event.priorityReason)
-                V6Sub("本项承受点 / 十神", "${event.natalAnchors.sorted().joinToString("、")} / ${event.tenGods.sorted().joinToString("、")}")
-                event.evidence.forEach { Text("• $it", fontSize = 12.sp, lineHeight = 19.sp) }
+                V6Sub("为何这样排序", event.priorityReason)
+                TextButton(onClick = { auditExpanded = !auditExpanded }) { Text(if (auditExpanded) "收起技术记录" else "看原始技术记录") }
+                if (auditExpanded) {
+                    V6Sub("原局承载明细", event.natalContext.joinToString("\n"))
+                    event.evidence.distinct().forEach { Text("• $it", fontSize = 12.sp, lineHeight = 19.sp) }
+                }
             }
         }
     }
@@ -642,6 +628,7 @@ private fun V6RecordsPage(modifier: Modifier, recordsRaw: String) {
 
 @Composable
 private fun V6RecordCard(record: String) {
+    var expanded by remember(record) { mutableStateOf(false) }
     val date = record.lineSequence().firstOrNull().orEmpty()
     if (!record.contains("§ORIGINAL")) {
         V6Section(date) {
@@ -651,6 +638,7 @@ private fun V6RecordCard(record: String) {
         return
     }
     val original = record.substringAfter("§ORIGINAL").substringBefore("§ACTUAL").trim()
+    val summary = record.substringBefore("§ORIGINAL").substringAfter("§SUMMARY", "").trim()
     val actual = record.substringAfter("§ACTUAL").substringBefore("§CALIBRATION").trim()
     val calibration = record.substringAfter("§CALIBRATION").trim()
 
@@ -664,7 +652,9 @@ private fun V6RecordCard(record: String) {
             Spacer(Modifier.height(10.dp))
             HorizontalDivider(color = LINE_V6)
             Spacer(Modifier.height(12.dp))
-            V6RecordSection("原始判断", original, SOFT_V6)
+            if (summary.isNotBlank()) V6RecordSection("原始判断", summary, SOFT_V6)
+            TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起完整记录" else "查看原始完整推导") }
+            if (expanded) V6RecordSection("完整原始判断", original, SOFT_V6)
             Spacer(Modifier.height(10.dp))
             V6RecordSection("当天实际发生", actual, BG_V6)
             Spacer(Modifier.height(10.dp))

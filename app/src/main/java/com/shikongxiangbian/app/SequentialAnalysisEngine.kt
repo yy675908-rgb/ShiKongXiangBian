@@ -212,7 +212,24 @@ object SequentialAnalysisEngine {
             carriers = field.nodes.flatMap { node ->
                 listOf("${node.label}:${node.gan}:${EvidenceChannel.STEM}" to field.carrier(node, node.gan, EvidenceChannel.STEM)) +
                     node.hiddenGan.map { gan -> "${node.label}:$gan:${EvidenceChannel.BRANCH}" to field.carrier(node, gan, EvidenceChannel.BRANCH) }
-            }.toMap()
+            }.toMap(),
+            keyPoint = when (core.issue) {
+                Issue.COLD -> "${month.zhi}月偏寒，火${if (field.state("火").expressed) "已透但承载不足" else if (field.state("火").rooted) "有根未透" else "未见直接根或透出"}。"
+                Issue.HOT_DRY -> "${month.zhi}月偏温燥，水${if (field.state("水").expressed) "已透但承载不足" else if (field.state("水").rooted) "有根未透" else "未见直接根或透出"}。"
+                Issue.PRESSURE -> "${control.entries.first { it.value == dayElement }.key}的约束通路有承载，日主${dayElement}无直接根。"
+                Issue.BRIDGE -> "约束可经${source}转接到日主${dayElement}，补给端是否可用是关键。"
+                Issue.DRAIN -> "${outlet}输出端有承载，日主${dayElement}的供给仍待补。"
+                Issue.OUTLET -> "${source}补给已接入，${outlet}输出端尚未透出。"
+                Issue.BALANCE -> "以${source} → ${dayElement} → ${outlet}看补给与输出，原局未定单一偏枯。"
+            },
+            followUp = when (core.issue) {
+                Issue.COLD -> "火能否透出、补根并接到主体。"
+                Issue.HOT_DRY -> "水能否透出并接通润燥，兼查土是否阻水。"
+                Issue.PRESSURE, Issue.BRIDGE -> "${source}能否续接补给，以及日主根气是否受扰。"
+                Issue.DRAIN -> "先查主体补给，再看输出能否持续。"
+                Issue.OUTLET -> "${outlet}能否透出，补给能否转为实际输出。"
+                Issue.BALANCE -> "分别查补给、输出和约束，不只盯最后入场的一股气。"
+            }
         )
     }
 
@@ -427,6 +444,17 @@ object SequentialAnalysisEngine {
             else -> "若本气根源另受冲合，或后层制约该通路，本层作用需下调；具体事件仍需现实条件。"
         }
         val resultState = after.brief(core)
+        val summaryChanges = elements.mapNotNull { e ->
+            val old = before.state(e)
+            val now = after.state(e)
+            val changes = buildList {
+                if (!old.expressed && now.expressed) add("透出")
+                if (!old.rooted && now.rooted) add("添根")
+                if (!old.restricted && now.restricted) add("承载受牵")
+                if (old.restricted && !now.restricted) add("另有承载接入")
+            }
+            if (changes.isEmpty()) null else e + changes.joinToString("、")
+        } + if (incoming.label == "流月") listOf("时令${before.currentMonth} → ${after.currentMonth}") else emptyList()
         return LayerAnalysisV5(
             order = index + 1, layer = incoming.label, ganZhi = incoming.gan + incoming.zhi,
             energyChange = "干${incoming.gan}${incoming.element}；支${incoming.zhi}本气${incoming.hiddenGan.first()}${incoming.branchElement}，余气${incoming.hiddenGan.drop(1).joinToString("、").ifBlank { "无" }}。${relationText(incoming.element, incoming.branchElement)}；${after.state(incoming.element).brief()}。",
@@ -439,7 +467,17 @@ object SequentialAnalysisEngine {
             condition = limit, relationKind = kind, changeRole = role, channel = channel, driverGan = driver,
             affectsCore = affects, techniques = techniques, evidence = evidence, sourceAvailable = sourceAvailable,
             sourceRestricted = sourceRestricted, inheritedFrom = continues.map { it.layer },
-            paths = impactPaths(index, incoming, before, after, previous, allContacts, newGroups)
+            paths = impactPaths(index, incoming, before, after, previous, allContacts, newGroups),
+            summary = summaryChanges.joinToString("；").ifBlank {
+                "${source}作用${target?.label ?: "前场"}的${targetElement}：" + when (kind) {
+                    EnergyRelation.SAME -> "同气相接"
+                    EnergyRelation.GENERATES -> "补入生源"
+                    EnergyRelation.GENERATED_BY -> "取用既有补给"
+                    EnergyRelation.CONTROLS -> "加入约束"
+                    EnergyRelation.CONTROLLED_BY -> "受既有约束"
+                    EnergyRelation.UNKNOWN -> "关系待定"
+                }
+            }
         )
     }
 
@@ -499,7 +537,7 @@ object SequentialAnalysisEngine {
         return ReadingV5(natal, layers, qi, image, bodyUse, tenGod, tenGodDomain(tenGod), judgment, signature,
             GroundedCalibrationEngine.memorySummary(memoryRaw, signature), key?.layer, chain, climate(field), trigger?.layer,
             finalSource?.available ?: false, finalSource?.restricted ?: false, finalSource?.description.orEmpty(),
-            elements.associateWith { field.state(it).evidence() }, natalEnergy, finalPathEnergy)
+            elements.associateWith { field.state(it).evidence() }, natalEnergy, finalPathEnergy, dayMaster = snapshot.dayMaster)
     }
     fun roleName(role: ChangeRole): String = when (role) {
         ChangeRole.SUPPLEMENT -> "补入承接条件"
