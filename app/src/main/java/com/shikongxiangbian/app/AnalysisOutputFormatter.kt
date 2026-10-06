@@ -65,7 +65,7 @@ object AnalysisOutputFormatter {
             else -> "大运背景"
         }
         return EventBrief(outcome, path?.let { shortBasis(it, reading.dayMaster) } ?: event.keyBasis,
-            listOf(scene, hold).filter { it.isNotBlank() }.joinToString("；"), window)
+            listOf(scene, hold, if (event.configurationLimits.isEmpty()) "" else "同一承受端的补给与制约需比较").filter { it.isNotBlank() }.joinToString("；"), window)
     }
 
     fun shortBasis(path: ImpactPath, dayMaster: String = ""): String {
@@ -130,9 +130,13 @@ object AnalysisOutputFormatter {
         }
 
     fun summary(reading: ReadingV5, grounded: GroundedReading): String = buildString {
+        if (reading.natal.field.configurations.isNotEmpty()) appendLine("原局气势：${reading.natal.field.overview()}")
         appendLine("原局：${reading.natal.keyPoint.ifBlank { reading.natal.coreInsight }}")
         if (reading.natal.followUp.isNotBlank()) appendLine("后续看：${reading.natal.followUp}")
-        reading.layers.forEach { appendLine("${it.layer}${it.ganZhi}：${it.summary.ifBlank { it.focus }}") }
+        reading.layers.forEach {
+            appendLine("${it.layer}${it.ganZhi}：${it.summary.ifBlank { it.focus }}")
+            if (it.configurationChanges.isNotEmpty()) appendLine("气势变化：${it.configurationChanges.joinToString("；")}")
+        }
         val main = grounded.events.filter { it.priority != EventPriority.WATCH }
         if (main.isEmpty()) appendLine("近期事项：目前没有条件较齐的路径。")
         main.forEach { e ->

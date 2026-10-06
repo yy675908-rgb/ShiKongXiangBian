@@ -13,6 +13,7 @@ object AnalysisRecordBuilder {
             appendLine("§ORIGINAL")
             appendLine("【原局能量基础】")
             appendLine(reading.natal.coreInsight)
+            reading.natal.field.configurations.forEach { appendLine("组合气势：${it.describe()}") }
             appendLine(reading.natal.season)
             appendLine(reading.natal.dayMasterContext)
             appendLine(reading.natal.rootsAndHidden)
@@ -31,6 +32,7 @@ object AnalysisRecordBuilder {
                 appendLine("落点：${layer.focus}")
                 appendLine("入场前：${layer.priorState}")
                 appendLine("入场后：${layer.resultingState}")
+                layer.configurationChanges.forEach { appendLine("组合变化：$it") }
                 appendLine("依据：${layer.technical.joinToString("；")}")
                 appendLine("成立条件：${layer.condition}")
             }
@@ -40,6 +42,7 @@ object AnalysisRecordBuilder {
             appendLine(grounded.image)
             appendLine("【主客体用】")
             appendLine(reading.bodyUse.joinToString("；"))
+            reading.field.configurations.forEach { appendLine("整体组合：${EnergyConfigurationInterpreter.translate(it, reading.dayMaster)}") }
             appendLine("【十神：能量之后的人事翻译】")
             appendLine("能量本质：${grounded.tenGod.energyEssence}")
             appendLine("五行描述：${grounded.tenGod.element}｜${grounded.tenGod.elementNature}")
@@ -58,6 +61,8 @@ object AnalysisRecordBuilder {
                 appendLine("不成立：${event.invalidIf}")
                 appendLine("排序依据：${event.priorityReason}")
                 event.natalContext.forEach { appendLine("原局：$it") }
+                event.configurationContext.forEach { appendLine("组合承接：$it") }
+                event.configurationLimits.forEach { appendLine("组合限制：$it") }
                 event.energyProcess.forEach { appendLine("能量本质：$it") }
                 event.development.forEach { appendLine("承接：$it") }
                 appendLine("原局承受点：${event.natalAnchors.joinToString("、")}；十神端点：${event.tenGods.joinToString("、")}")

@@ -15,7 +15,8 @@ data class NatalAnalysisV5(
     val circuits: List<NatalEnergyCircuit> = emptyList(),
     val carriers: Map<String, EnergyAvailability> = emptyMap(),
     val keyPoint: String = "",
-    val followUp: String = ""
+    val followUp: String = "",
+    val field: EnergyFieldReading = EnergyFieldReading()
 )
 
 /** Qualitative symbolic energy functions, not physical energy measurements. */
@@ -98,7 +99,9 @@ data class LayerAnalysisV5(
     val sourceRestricted: Boolean = false,
     val inheritedFrom: List<String> = emptyList(),
     val paths: List<ImpactPath> = emptyList(),
-    val summary: String = ""
+    val summary: String = "",
+    val field: EnergyFieldReading = EnergyFieldReading(),
+    val configurationChanges: List<String> = emptyList()
 )
 
 data class ReadingV5(
@@ -122,7 +125,8 @@ data class ReadingV5(
     val finalEnergy: Map<String, EnergyAvailability> = emptyMap(),
     val natalEnergy: Map<String, EnergyAvailability> = emptyMap(),
     val finalPathEnergy: Map<String, PathEnergy> = emptyMap(),
-    val dayMaster: String = ""
+    val dayMaster: String = "",
+    val field: EnergyFieldReading = EnergyFieldReading()
 ) {
     fun focal(): LayerAnalysisV5? = layers.firstOrNull { it.layer == focalLayer }
         ?: layers.lastOrNull()

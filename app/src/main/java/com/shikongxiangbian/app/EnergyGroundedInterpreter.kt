@@ -8,7 +8,8 @@ data class GroundedTenGod(
     val tenGod: String,
     val humanTranslation: String,
     val logic: String,
-    val energyEssence: String = ""
+    val energyEssence: String = "",
+    val configurations: List<String> = emptyList()
 )
 
 data class GroundedReading(
@@ -62,7 +63,8 @@ object EnergyGroundedInterpreter {
         }
         val domain = SequentialAnalysisEngine.tenGodDomain(tg)
         val behavior = humanBehavior(tg, key, process)
-        val human = if (key == null) "尚不能确定动态人事落点。" else "$domain：$behavior"
+        val combinations = focalPath?.let { EnergyConfigurationInterpreter.context(it, reading.field, snapshot.dayMaster) }.orEmpty()
+        val human = if (combinations.isNotEmpty()) combinations.joinToString("\n") else if (key == null) "尚不能确定动态人事落点。" else "$domain：$behavior"
         val driver = key?.let { "${it.layer}${it.ganZhi}的${if (it.channel == EvidenceChannel.STEM) "天干" else "支中取用"}${it.driverGan}" } ?: "未定"
         val essence = process?.describe()
             ?: "先看原局补给、承载、输出与制约通路；尚无可独立核查的动态作用。"
@@ -105,7 +107,7 @@ object EnergyGroundedInterpreter {
             judgment["内部外部"] = "各项保留各自原局承受点，不能把不同落点统一解释为同一事件。"
             judgment["发展阶段"] = "可能并行；共享依据的事项仅在前项发生且需处理时接续。"
         }
-        return GroundedReading(image, GroundedTenGod(element, nature(element), state, relationToDay, tg, human, logic, essence), judgment, parallel.events, parallel.connections)
+        return GroundedReading(image, GroundedTenGod(element, nature(element), state, relationToDay, tg, human, logic, essence, combinations), judgment, parallel.events, parallel.connections)
     }
 
     private fun humanBehavior(tg: String, key: LayerAnalysisV5?, process: EnergyProcess?): String {

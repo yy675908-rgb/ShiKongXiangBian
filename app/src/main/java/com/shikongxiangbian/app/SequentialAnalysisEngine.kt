@@ -74,6 +74,9 @@ object SequentialAnalysisEngine {
                     else -> "未见本通道被旁干牵合，其他同五行状态另看"
                 })
         }
+        fun configurations(dayElement: String): EnergyFieldReading = EnergyConfigurationInterpreter.analyze(dayElement,
+            nodes.map { node -> EnergyEndpoint("${node.label}:${node.gan}:${EvidenceChannel.STEM}", node.label, node.gan,
+                node.element, carrier(node, node.gan, EvidenceChannel.STEM)) })
         fun append(n: Node): Field = copy(nodes = nodes + n, currentMonth = if (n.label == "流月") n.zhi else currentMonth)
         fun routes(element: String): String {
             val source = generate.entries.first { it.value == element }.key
@@ -209,6 +212,7 @@ object SequentialAnalysisEngine {
             coreInsight = core.thesis,
             condition = core.boundary,
             circuits = natalCircuits(field, dayElement),
+            field = field.configurations(dayElement),
             carriers = field.nodes.flatMap { node ->
                 listOf("${node.label}:${node.gan}:${EvidenceChannel.STEM}" to field.carrier(node, node.gan, EvidenceChannel.STEM)) +
                     node.hiddenGan.map { gan -> "${node.label}:$gan:${EvidenceChannel.BRANCH}" to field.carrier(node, gan, EvidenceChannel.BRANCH) }
@@ -217,7 +221,9 @@ object SequentialAnalysisEngine {
                 Issue.COLD -> "${month.zhi}月偏寒，火${if (field.state("火").expressed) "已透但承载不足" else if (field.state("火").rooted) "有根未透" else "未见直接根或透出"}。"
                 Issue.HOT_DRY -> "${month.zhi}月偏温燥，水${if (field.state("水").expressed) "已透但承载不足" else if (field.state("水").rooted) "有根未透" else "未见直接根或透出"}。"
                 Issue.PRESSURE -> "${control.entries.first { it.value == dayElement }.key}的约束通路有承载，日主${dayElement}无直接根。"
-                Issue.BRIDGE -> "约束可经${source}转接到日主${dayElement}，补给端是否可用是关键。"
+                Issue.BRIDGE -> if (field.configurations(dayElement).configurations.first { it.name == "制约经补给转接" }.ready)
+                    "约束 → ${source}补给 → 日主${dayElement}有显性承接候选，仍需比较直接约束。"
+                    else "约束经${source}转接的承载尚待检，不能直接按生扶论。"
                 Issue.DRAIN -> "${outlet}输出端有承载，日主${dayElement}的供给仍待补。"
                 Issue.OUTLET -> "${source}补给已接入，${outlet}输出端尚未透出。"
                 Issue.BALANCE -> "以${source} → ${dayElement} → ${outlet}看补给与输出，原局未定单一偏枯。"
@@ -443,6 +449,9 @@ object SequentialAnalysisEngine {
             !sourceAvailable -> "$source${if (after.state(source).expressed) "已透但承载不足" else "仍以支中潜气为主"}，尚不能确认显性通路。"
             else -> "若本气根源另受冲合，或后层制约该通路，本层作用需下调；具体事件仍需现实条件。"
         }
+        val dayElement = before.nodes.first { it.label == "日柱" }.element
+        val fieldReading = after.configurations(dayElement)
+        val configurationChanges = EnergyConfigurationInterpreter.changes(before.configurations(dayElement), fieldReading)
         val resultState = after.brief(core)
         val summaryChanges = elements.mapNotNull { e ->
             val old = before.state(e)
@@ -468,6 +477,7 @@ object SequentialAnalysisEngine {
             affectsCore = affects, techniques = techniques, evidence = evidence, sourceAvailable = sourceAvailable,
             sourceRestricted = sourceRestricted, inheritedFrom = continues.map { it.layer },
             paths = impactPaths(index, incoming, before, after, previous, allContacts, newGroups),
+            field = fieldReading, configurationChanges = configurationChanges,
             summary = summaryChanges.joinToString("；").ifBlank {
                 "${source}作用${target?.label ?: "前场"}的${targetElement}：" + when (kind) {
                     EnergyRelation.SAME -> "同气相接"
@@ -531,13 +541,13 @@ object SequentialAnalysisEngine {
                 state.target.available.toString(), state.target.restricted.toString(), state.challenges.joinToString()).joinToString(":")
         }.distinct().sorted().joinToString("|")
         val shapeHash = java.security.MessageDigest.getInstance("SHA-256").digest(eventShape.toByteArray(Charsets.UTF_8)).take(8).joinToString("") { "%02x".format(it) }
-        val signature = listOf("seq4", natalNodes.joinToString("") { it.gan + it.zhi }, core.issue.name, core.focusElement, field.currentMonth, key?.sourceElement ?: "无", key?.changeRole?.name ?: "无", key?.targetLabel ?: "无", tenGod, key?.relationKind?.name ?: "无", finalSource?.available.toString(), finalSource?.restricted.toString(), shapeHash).joinToString("-")
+        val signature = listOf("seq5", natalNodes.joinToString("") { it.gan + it.zhi }, core.issue.name, core.focusElement, field.currentMonth, key?.sourceElement ?: "无", key?.changeRole?.name ?: "无", key?.targetLabel ?: "无", tenGod, key?.relationKind?.name ?: "无", finalSource?.available.toString(), finalSource?.restricted.toString(), shapeHash).joinToString("-")
         val image = "原局${core.focusElement}承接轴上，${key?.let { "${it.layer}带来${roleName(it.changeRole)}" } ?: "尚无外来变化"}；${climate(field)}"
         val judgment = linkedMapOf("事情类型" to (key?.let { roleName(it.changeRole) } ?: "原局观察"), "领域" to tenGodDomain(tenGod))
         return ReadingV5(natal, layers, qi, image, bodyUse, tenGod, tenGodDomain(tenGod), judgment, signature,
             GroundedCalibrationEngine.memorySummary(memoryRaw, signature), key?.layer, chain, climate(field), trigger?.layer,
             finalSource?.available ?: false, finalSource?.restricted ?: false, finalSource?.description.orEmpty(),
-            elements.associateWith { field.state(it).evidence() }, natalEnergy, finalPathEnergy, dayMaster = snapshot.dayMaster)
+            elements.associateWith { field.state(it).evidence() }, natalEnergy, finalPathEnergy, dayMaster = snapshot.dayMaster, field = field.configurations(stems.getValue(snapshot.dayMaster)))
     }
     fun roleName(role: ChangeRole): String = when (role) {
         ChangeRole.SUPPLEMENT -> "补入承接条件"
@@ -555,6 +565,7 @@ object SequentialAnalysisEngine {
         val sourceState = when { key == null -> "未加入外来层"; source?.restricted == true -> "${key.sourceElement}入场但承载受牵，不能直接判起势"; source?.available == true -> "${key.sourceElement}有显性承载，${roleName(key.changeRole)}"; else -> "${key.sourceElement}入场，显性承载未充分成立" }
         val gathering = when { key == null -> "原局观察"; "冲" in key.techniques && ("六合" in key.techniques || "天干合" in key.techniques) -> "同落点冲合并见，不能单定聚散"; "冲" in key.techniques -> "承载被引动，是否散取决于双方根源"; "日主自合" in key.techniques -> "与主体直接相合，不先按合去处理"; "天干合" in key.techniques || "六合" in key.techniques -> "相牵，聚合与合绊待分"; else -> "未见足够证据定单向聚散" }
         return listOf(
+            "整体通路：${field.configurations(field.nodes.first { it.label == "日柱" }.element).overview()}",
             "谁在起势：$sourceState",
             "谁在退：${when (key?.changeRole) { ChangeRole.DRAIN -> "${core.focusElement}向外传递，退势仍取决于补给"; ChangeRole.RESTRAIN -> "${core.focusElement}受制约候选；不能见克即定衰退"; else -> "暂不能确认单方退势" }}",
             "谁被引动：${key?.targetLabel ?: "原局"}${if (trigger != null && trigger.layer != key?.layer) "；${trigger.layer}承接同链" else ""}",

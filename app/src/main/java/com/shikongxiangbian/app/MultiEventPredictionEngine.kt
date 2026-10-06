@@ -33,7 +33,9 @@ data class EventPrediction(
     val keyBasis: String = "",
     val energyProcess: List<String> = emptyList(),
     val keyPathId: String = "",
-    val hasUsableWindow: Boolean = false
+    val hasUsableWindow: Boolean = false,
+    val configurationContext: List<String> = emptyList(),
+    val configurationLimits: List<String> = emptyList()
 )
 
 data class EventConnection(val fromId: String, val toId: String, val description: String, val condition: String)
@@ -87,7 +89,9 @@ object MultiEventPredictionEngine {
             // A constrained hour path cannot borrow a clear day path to claim an hour trigger.
             val usablePaths = evidencePaths.filter { usable(it) }
             val latest = usablePaths.maxByOrNull { it.order } ?: evidencePaths.maxBy { it.order }
-            val priority = when { aligned -> EventPriority.FOCUS; possible -> EventPriority.POSSIBLE; else -> EventPriority.WATCH }
+            val configurationLimits = EnergyConfigurationInterpreter.counterRoutes(latest, reading.field)
+            val configurationContext = EnergyConfigurationInterpreter.context(latest, reading.field, snapshot.dayMaster)
+            val priority = when { aligned && configurationLimits.isEmpty() -> EventPriority.FOCUS; possible -> EventPriority.POSSIBLE; else -> EventPriority.WATCH }
             val reason = when (priority) {
                 EventPriority.FOCUS -> "不同层承接同一事项路径，日/时已触及，且至少一条显性承载条件较齐；这是结构排序，不是命中概率。"
                 EventPriority.POSSIBLE -> "已有日/时作用依据，但通路承载、重复承接或现实场景尚未全部确认。"
@@ -98,7 +102,7 @@ object MultiEventPredictionEngine {
                     nearPaths.all { !EnergyEssenceInterpreter.process(it, reading).originReady } -> "实际施生/施制端的承载未齐；来气有根不能替既有供方完成输出。"
                     else -> "近端关系已列，但显性端点或作用承载未齐，暂不列为近期重点。"
                 }
-            } + if (evidencePaths.any { it.order > latest.order }) " 较晚层另有待检依据，本项窗口按仍可承接的${latest.sourceLabel}，不借用较晚层提高应期精度。" else ""
+            } + (if (configurationLimits.isNotEmpty()) " 同一承受端另有制约候选，组合效力未定，暂不升为重点。" else "") + if (evidencePaths.any { it.order > latest.order }) " 较晚层另有待检依据，本项窗口按仍可承接的${latest.sourceLabel}，不借用较晚层提高应期精度。" else ""
             val facts = evidencePaths.flatMap { p ->
                 listOf(
                     p.evidence,
@@ -113,7 +117,7 @@ object MultiEventPredictionEngine {
             EventPrediction(
                 id = key, domain = members.first().domain, pattern = members.first().pattern, direction = members.first().direction,
                 title = members.first().title, possibilities = members.flatMap { it.possibilities }.distinct(), priority = priority, priorityReason = reason,
-                timeWindow = if (usablePaths.isEmpty()) "${latest.sourceLabel}关系待检，尚未成立有效触发；应期未定" else window(latest.sourceLabel), condition = members.map { it.condition }.distinct().joinToString("；"),
+                timeWindow = if (usablePaths.isEmpty()) "${latest.sourceLabel}关系待检，尚未成立有效触发；应期未定" else window(latest.sourceLabel), condition = (members.map { it.condition } + configurationLimits).distinct().joinToString("；"),
                 invalidIf = members.map { it.invalidIf }.distinct().joinToString("；"), evidence = facts,
                 pathIds = evidencePaths.map { it.id }.toSet(), natalAnchors = evidencePaths.flatMap { it.natalAnchors }.toSet(),
                 tenGods = members.flatMap { it.gods }.toSet(), latestLayer = latest.sourceLabel,
@@ -131,7 +135,8 @@ object MultiEventPredictionEngine {
                 }, endpointKeys = evidencePaths.flatMap { endpointKeys(it) }.toSet(),
                 keyBasis = "${EnergyEssenceInterpreter.process(latest, reading).mechanism}；${latest.techniques.sorted().joinToString("/", postfix = if (latest.techniques.isEmpty()) "" else "，")}${if (!usable(latest)) "本项承载待补" else "结果仍看承接条件"}",
                 energyProcess = routes.map { EnergyEssenceInterpreter.process(it, reading).describe() }.distinct(),
-                keyPathId = latest.id, hasUsableWindow = usablePaths.isNotEmpty()
+                keyPathId = latest.id, hasUsableWindow = usablePaths.isNotEmpty(),
+                configurationContext = configurationContext, configurationLimits = configurationLimits
             )
         }
         // Opposed readings remain explicit alternatives; don't call both equally certain.

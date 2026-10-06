@@ -280,7 +280,8 @@ private fun V6AnalysisPage(
                 TextButton(onClick = onOpenSettings) { Text("检查本命") }
             } }
         } else {
-            item(key = "chart", contentType = "chart") { V6TimeSpace(forecast.snapshot) }
+            item(key = "chart", contentType = "chart") { V6TimeSpace(forecast.snapshot, forecast.input.date) }
+            item(key = "pipeline", contentType = "details") { V6Pipeline() }
             item(key = "natal", contentType = "details") { V6Natal(reading.natal) }
             item(key = "layersTitle", contentType = "header") { V6Label("② 逐层变化") }
             items(reading.layers, key = { "layer:${it.order}:${it.layer}" }, contentType = { "layer" }) {
@@ -333,7 +334,7 @@ private fun showV6DatePicker(context: android.content.Context, text: String, onP
 }
 
 @Composable
-private fun V6TimeSpace(snapshot: AnalysisSnapshot) {
+private fun V6TimeSpace(snapshot: AnalysisSnapshot, appliedDate: String) {
     V6Section("时空 · 原始信息", compact = true) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("本命", fontSize = 11.sp, color = Color.Gray)
@@ -345,7 +346,7 @@ private fun V6TimeSpace(snapshot: AnalysisSnapshot) {
             Text("大运：${it.ganZhi}　${it.startYear}–${it.endYear}",
                 modifier = Modifier.padding(top = 6.dp), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         }
-        Spacer(Modifier.height(6.dp))
+        Text("此时 · $appliedDate", modifier = Modifier.padding(top = 6.dp, bottom = 3.dp), fontSize = 11.sp, color = GREEN_V6)
         V6Pillars(snapshot.dynamic)
         Text("干支下方：藏干 / 十二长生", modifier = Modifier.padding(top = 4.dp), fontSize = 9.sp, color = Color.Gray)
     }
@@ -377,6 +378,7 @@ private fun V6Pillars(pillars: List<PillarView>) {
 private fun V6Natal(natal: NatalAnalysisV5) {
     var expanded by rememberSaveable(natal) { mutableStateOf(false) }
     V6Section("① 原局关键点") {
+        if (natal.field.configurations.isNotEmpty()) V6Sub("整体气势", natal.field.overview())
         Text(natal.keyPoint.ifBlank { natal.coreInsight }, lineHeight = 21.sp)
         if (natal.followUp.isNotBlank()) V6Sub("后续看", natal.followUp)
         TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起原局依据" else "展开原局依据") }
@@ -398,13 +400,18 @@ private fun V6Natal(natal: NatalAnalysisV5) {
 
 @Composable
 private fun V6Pipeline() {
-    V6Section("分析顺序") {
-        Text("原局 → 大运 → 流年 → 流月 → 流日 → 流时", fontWeight = FontWeight.Bold, color = GREEN_V6)
-        Spacer(Modifier.height(6.dp))
-        Text("每层：外来能量进入 → 改变既有场的补给、承载、输出与制约 → 气势怎样改变 → 再看干支关系如何实现这种变化。", lineHeight = 20.sp)
-        Spacer(Modifier.height(8.dp))
-        Text("应事链：时空 ＋ 能量 ＋ 气象 ＋ 主客体用 ＋ 十神 → 应事", fontWeight = FontWeight.SemiBold)
-        Text("先看能量本质、作用方向与耗用，再用五行和十神描述；人事定位服从实际作用。", fontSize = 12.sp, color = Color.Gray)
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    V6Section("分析顺序与应事链", compact = true) {
+        Text("原局 → 大运 → 流年 → 流月 → 流日 → 流时", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
+        TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(0.dp)) {
+            Text(if (expanded) "收起方法" else "查看分析方法")
+        }
+        if (expanded) {
+            Text("每层：能量进入 → 既有场怎样改变 → 整体气势怎样改变 → 合冲刑害破如何实现变化。", lineHeight = 20.sp)
+            Spacer(Modifier.height(6.dp))
+            Text("应事链：时空 ＋ 能量 ＋ 气象 ＋ 主客体用 ＋ 十神 → 应事", fontWeight = FontWeight.SemiBold)
+            Text("先看来源、承载、流向与耗用；十神服从组合中的实际作用，再逐项定位可能的事。", fontSize = 12.sp, color = Color.Gray)
+        }
     }
 }
 
@@ -414,12 +421,14 @@ private fun V6Layer(layer: LayerAnalysisV5, grounded: GroundedReading) {
     val domains = remember(layer, grounded) { AnalysisOutputFormatter.domains(layer, grounded) }
     V6Section("${layer.layer} ${layer.ganZhi}") {
         Text(layer.summary.ifBlank { layer.focus }, lineHeight = 20.sp)
+        if (layer.configurationChanges.isNotEmpty()) Text("气势：${layer.configurationChanges.take(2).joinToString("；")}", fontSize = 13.sp, lineHeight = 20.sp, color = GREEN_V6)
         if (domains.isNotBlank()) Text("涉及：$domains", fontSize = 12.sp, color = Color.Gray)
         TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起" else "看本层依据") }
         if (expanded) {
             V6Sub("作用落点", layer.focus)
             V6Sub("进入前", layer.priorState)
             V6Sub("进入后", layer.resultingState)
+            layer.field.configurations.forEach { V6Sub(it.name, it.describe()) }
             V6Sub("条件", layer.condition)
             layer.technical.distinct().forEach { Text("• $it", fontSize = 12.sp, lineHeight = 19.sp) }
         }
@@ -432,10 +441,14 @@ private fun V6Derivation(reading: ReadingV5, grounded: GroundedReading) {
     V6Section("推导明细") {
         TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起完整推导" else "查看气势、体用与十神") }
         if (expanded) {
-            V6Pipeline()
             V6Qi(reading.qi)
             V6Image(grounded.image)
             V6BodyUse(reading.bodyUse)
+            V6Section("组合气势 → 十神作用") {
+                reading.field.configurations.filter { it.bindings.isNotEmpty() }.forEach { config ->
+                    V6Sub(config.name, EnergyConfigurationInterpreter.translate(config, reading.dayMaster))
+                }
+            }
             V6TenGod(grounded.tenGod)
             V6Sub("预测前记忆", reading.memoryBefore)
         }
@@ -516,6 +529,8 @@ private fun V6EventCard(number: Int, event: EventPrediction, reading: ReadingV5,
             if (expanded) {
                 V6Sub("原局落点", foundation)
                 V6Sub("逐层作用", timeline)
+                if (event.configurationContext.isNotEmpty()) V6Sub("组合承接", event.configurationContext.joinToString("\n"))
+                if (event.configurationLimits.isNotEmpty()) V6Sub("同时受制", event.configurationLimits.joinToString("\n"))
                 V6Sub("完整条件", event.condition)
                 V6Sub("不成立时", event.invalidIf)
                 V6Sub("为何这样排序", event.priorityReason)
