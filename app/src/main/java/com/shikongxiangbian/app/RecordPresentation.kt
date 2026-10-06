@@ -30,23 +30,30 @@ object RecordPresentation {
         return RecordChart(natal, saved("大运"), labels.drop(1).mapNotNull { label -> saved(label).takeIf { it.isNotBlank() }?.let { label to it } })
     }
 
-    fun judgment(raw: String): List<JudgmentLine> = raw.lineSequence().flatMap { line ->
-        if (line.startsWith("气势变化：")) AnalysisLanguage.changes(line.substringAfter("：").split("；")).asSequence().map { "组合变化：$it" }
-        else sequenceOf(line)
-    }.toList().let { lines ->
-      val memoryStart = lines.indexOfFirst { it == "【预测前记忆】" }
-      lines.mapIndexed { index, line ->
-        val text = if (memoryStart >= 0 && index >= memoryStart) line.trim() else AnalysisLanguage.text(line.trim())
-        val section = text.startsWith("【") && text.endsWith("】")
-        val numbered = Regex("^\\d+\\. ").containsMatchIn(text)
-        val colon = text.indexOf('：')
-        val bold = when {
-            section -> text.length
-            numbered -> text.indexOf('｜').takeIf { it >= 0 } ?: text.length
-            colon in 1..28 -> colon + 1
-            else -> 0
+    fun judgment(raw: String): List<JudgmentLine> = buildList {
+        var memory = false
+        raw.lineSequence().forEach { rawLine ->
+            if (rawLine == "【预测前记忆】") memory = true
+            val lines = if (!memory && rawLine.startsWith("气势变化：")) {
+                AnalysisLanguage.changes(rawLine.substringAfter("：").split("；")).map { "组合变化：$it" }
+            } else listOf(rawLine)
+            lines.forEach { line ->
+                val text = if (memory) line else AnalysisLanguage.text(line.trim())
+                if (text.isNotBlank()) {
+                    val section = text.startsWith("【") && text.endsWith("】")
+                    val numbered = !memory && Regex("^\\d+\\. ").containsMatchIn(text)
+                    val colon = text.indexOf('：')
+                    val bold = when {
+                        section -> text.length
+                        memory -> 0
+                        numbered -> text.indexOf('｜').takeIf { it >= 0 } ?: text.length
+                        colon in 1..28 -> colon + 1
+                        else -> 0
+                    }
+                    val layer = Regex("^(大运|流年|流月|流日|流时)$GZ[：:]").containsMatchIn(text)
+                    add(JudgmentLine(text, bold, section || numbered || text.startsWith("原局：") || layer))
+                }
+            }
         }
-        JudgmentLine(text, bold, section || numbered || text.startsWith("原局：") || Regex("^(大运|流年|流月|流日|流时)$GZ[：:]").containsMatchIn(text))
-      }.filter { it.text.isNotBlank() }
     }
 }

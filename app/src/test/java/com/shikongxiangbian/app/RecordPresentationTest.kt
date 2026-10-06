@@ -103,6 +103,8 @@ class RecordPresentationTest {
         assertTrue(raw.contains("【预测前记忆】\n" + f.reading.memoryBefore))
         val formatted = RecordPresentation.judgment("【预测前记忆】\n$actual")
         assertEquals(actual, formatted.last().text)
+        val memoryLine = "气势变化：我用自己的词记下这件事；显性节点"
+        assertEquals(memoryLine, RecordPresentation.judgment("【预测前记忆】\n$memoryLine").last().text)
     }
 
     @Test fun missingConfigurationNamesTheMissingElementOrPeerRatherThanCallingItAnAbsentNode() {

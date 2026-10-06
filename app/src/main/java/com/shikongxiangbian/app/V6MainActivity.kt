@@ -450,7 +450,7 @@ private fun V6Pipeline() {
             V6AnalysisText(if (expanded) "收起方法" else "查看分析方法")
         }
         if (expanded) {
-            V6AnalysisText("每层先看新加入的五行怎样影响原局、气势怎样改变，再看合冲刑害破。", lineHeight = 20.sp)
+            V6AnalysisText("每层先看新加入的力量怎样生扶、制约或耗用原局，气势怎样改变，再看合冲刑害破。", lineHeight = 20.sp)
             Spacer(Modifier.height(6.dp))
             V6AnalysisText("应事链：时空 ＋ 能量 ＋ 气象 ＋ 主客体用 ＋ 十神 → 应事", fontWeight = FontWeight.SemiBold)
             V6AnalysisText("先看谁生谁、谁制谁，能否起作用及有何耗用；再结合十神判断可能发生的事。", fontSize = 12.sp, color = Color.Gray)
