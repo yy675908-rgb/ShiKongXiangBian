@@ -17,6 +17,12 @@ android {
         manifestPlaceholders["appLabel"] = "时空象变"
     }
 
+    // Use the exact path cached by Actions; AGP's default location may differ.
+    signingConfigs.getByName("debug").storeFile = file(
+        System.getenv("SHIKONG_DEBUG_KEYSTORE")
+            ?: "${System.getProperty("user.home")}/.android/debug.keystore"
+    )
+
     buildTypes {
         getByName("debug") {
             // Older distributed 0.6 APKs have a different debug certificate.
