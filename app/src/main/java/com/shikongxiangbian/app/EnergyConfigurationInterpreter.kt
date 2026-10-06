@@ -114,6 +114,6 @@ object EnergyConfigurationInterpreter {
         val receiver = if (path.relation == EnergyRelation.GENERATED_BY) "${path.sourceLabel}:${path.sourceGan}:${path.channel}" else "${path.targetLabel}:${path.targetGan}:${path.channel}"
         return field.configurations.filter { it.elements.size == 2 && it.relations.single() == EnergyRelation.CONTROLS }
             .flatMap { config -> config.bindings.filter { it.endpoints.last().key == receiver && it.endpoints.first().ready }
-                .map { "${it.endpoints.first().text}同时制约${it.endpoints.last().text}，需比较补给与制约谁能落实" } }.distinct()
+                .map { "${it.endpoints.first().text}对${it.endpoints.last().text}另有制约候选，需比较补给与制约谁能落实" } }.distinct()
     }
 }

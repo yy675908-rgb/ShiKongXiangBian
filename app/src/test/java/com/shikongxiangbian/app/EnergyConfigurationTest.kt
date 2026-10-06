@@ -39,10 +39,10 @@ class EnergyConfigurationTest {
     }
 
     @Test fun freeAlternativeDoesNotReleaseTheBoundMiddleInThisPath() {
-        val s = snapshot(listOf("流日" to "丙午"))
+        val s = snapshot(listOf("流日" to "丁巳"))
         val p = read(s).allPaths().single { it.channel == EvidenceChannel.STEM && it.targetLabel == "月柱" }
         val nodes = listOf(endpoint("月柱", "壬", "水", ready.copy(restricted = true)), endpoint("年柱", "癸", "水"),
-            endpoint("日柱", "甲", "木"), endpoint("流日", "丙", "火"))
+            endpoint("日柱", "甲", "木"), endpoint("流日", "丁", "火"))
         val field = EnergyConfigurationInterpreter.analyze("木", nodes)
         assertTrue(config(field, "补给制约输出").ready)
         val context = EnergyConfigurationInterpreter.context(p, field)
@@ -91,7 +91,7 @@ class EnergyConfigurationTest {
         val qualified = MultiEventPredictionEngine.predict(s, isolated.copy(field = field)).events.single { it.pattern == EventPattern.RESOURCE_GAIN }
         assertEquals(EventPriority.POSSIBLE, qualified.priority)
         assertTrue(qualified.configurationLimits.isNotEmpty())
-        assertTrue(qualified.condition.contains("同时制约"))
+        assertTrue(qualified.condition.contains("制约候选"))
         assertTrue(AnalysisOutputFormatter.event(qualified, isolated).condition.contains("补给与制约"))
     }
 }
