@@ -24,9 +24,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,7 +37,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -69,6 +69,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -236,18 +237,18 @@ private fun V6AnalysisPage(
     LazyColumn(
         modifier = modifier.fillMaxSize(), state = state,
         contentPadding = PaddingValues(18.dp, 18.dp, 18.dp, 28.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item(key = "header", contentType = "header") {
             Text("时空象变", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = INK_V6)
             Text("先看原局能量，再看逐层变化与具体应事。", fontSize = 13.sp, color = Color.Gray)
         }
         item(key = "date", contentType = "input") {
-            V6Section("查看日期（公历）") {
+            V6Section("查看日期（公历）", compact = true) {
                 OutlinedTextField(value = dateText, onValueChange = onDateText,
                     modifier = Modifier.fillMaxWidth(), label = { Text("yyyy-MM-dd HH:mm") },
                     singleLine = true, isError = dateError != null,
-                    supportingText = { dateError?.let { Text(it) } },
+                    supportingText = if (dateError != null) { { Text(dateError) } } else null,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { onApplyDate() }))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -333,34 +334,39 @@ private fun showV6DatePicker(context: android.content.Context, text: String, onP
 
 @Composable
 private fun V6TimeSpace(snapshot: AnalysisSnapshot) {
-    V6Section("时空 · 原始信息") {
-        Text("日主：${snapshot.dayMaster}", fontWeight = FontWeight.Bold, color = GREEN_V6)
-        Spacer(Modifier.height(8.dp))
-        Text("本命", fontSize = 12.sp, color = Color.Gray)
-        V6Pillars(snapshot.natal)
-        Spacer(Modifier.height(10.dp))
-        snapshot.daYun?.let {
-            Text("大运：${it.ganZhi}　${it.startYear}–${it.endYear}", fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(10.dp))
+    V6Section("时空 · 原始信息", compact = true) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("本命", fontSize = 11.sp, color = Color.Gray)
+            Text("日主：${snapshot.dayMaster}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
         }
-        Text("流年 · 流月 · 流日 · 流时", fontSize = 12.sp, color = Color.Gray)
+        Spacer(Modifier.height(4.dp))
+        V6Pillars(snapshot.natal)
+        snapshot.daYun?.let {
+            Text("大运：${it.ganZhi}　${it.startYear}–${it.endYear}",
+                modifier = Modifier.padding(top = 6.dp), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(Modifier.height(6.dp))
         V6Pillars(snapshot.dynamic)
+        Text("干支下方：藏干 / 十二长生", modifier = Modifier.padding(top = 4.dp), fontSize = 9.sp, color = Color.Gray)
     }
 }
 
 @Composable
 private fun V6Pillars(pillars: List<PillarView>) {
     Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         pillars.forEach { pillar ->
-            Card(colors = CardDefaults.cardColors(containerColor = SOFT_V6), shape = RoundedCornerShape(14.dp)) {
-                Column(Modifier.padding(11.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(pillar.label, fontSize = 11.sp, color = Color.Gray)
-                    Text(pillar.ganZhi, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                    Text("藏干 ${pillar.hiddenGan.joinToString("·")}", fontSize = 10.sp, color = Color.Gray)
-                    Text(pillar.changSheng, fontSize = 10.sp, color = Color.Gray)
+            Card(modifier = Modifier.weight(1f).fillMaxHeight(),
+                colors = CardDefaults.cardColors(containerColor = SOFT_V6), shape = RoundedCornerShape(10.dp)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(pillar.label, fontSize = 10.sp, lineHeight = 13.sp, color = Color.Gray)
+                    Text(pillar.ganZhi, fontSize = 18.sp, lineHeight = 23.sp, fontWeight = FontWeight.Bold)
+                    Text(pillar.hiddenGan.joinToString("·"), fontSize = 9.sp, lineHeight = 12.sp,
+                        textAlign = TextAlign.Center)
+                    Text(pillar.changSheng, fontSize = 10.sp, lineHeight = 13.sp, color = Color.Gray)
                 }
             }
         }
@@ -497,8 +503,8 @@ private fun V6EventCard(number: Int, event: EventPrediction, reading: ReadingV5,
     val brief = remember(event, reading) { AnalysisOutputFormatter.event(event, reading) }
     val foundation = remember(event, reading, expanded) { if (expanded) AnalysisOutputFormatter.foundation(event, reading) else "" }
     val timeline = remember(event, reading, expanded) { if (expanded) AnalysisOutputFormatter.timeline(event, reading).joinToString("\n") else "" }
-    Card(modifier = Modifier.fillMaxWidth().padding(top = 9.dp), colors = CardDefaults.cardColors(containerColor = BG_V6)) {
-        Column(Modifier.padding(12.dp)) {
+    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(12.dp)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text("$number. ${AnalysisOutputFormatter.title(event)}", fontWeight = FontWeight.Bold, color = GREEN_V6)
             Text("${event.priority.title} · ${brief.window}", fontSize = 12.sp, color = Color.Gray)
             Text(brief.outcome, lineHeight = 21.sp)
@@ -506,7 +512,7 @@ private fun V6EventCard(number: Int, event: EventPrediction, reading: ReadingV5,
             Text("前提：${brief.condition}", fontSize = 12.sp, lineHeight = 19.sp)
             val alternatives = allEvents.filter { it.id in event.conflictsWith }
             if (alternatives.isNotEmpty()) Text("其他条件下：${alternatives.joinToString("、") { AnalysisOutputFormatter.title(it) }}", fontSize = 12.sp, color = GREEN_V6)
-            TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起" else "看推导与不成立条件") }
+            TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) { Text(if (expanded) "收起" else "看推导与不成立条件") }
             if (expanded) {
                 V6Sub("原局落点", foundation)
                 V6Sub("逐层作用", timeline)
@@ -676,17 +682,17 @@ private fun V6Label(text: String) {
 }
 
 @Composable
-private fun V6Section(title: String, content: @Composable () -> Unit) {
+private fun V6Section(title: String, compact: Boolean = false, content: @Composable () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         shape = RoundedCornerShape(18.dp)
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = INK_V6)
-            Spacer(Modifier.height(9.dp))
+        Column(Modifier.padding(if (compact) 12.dp else 16.dp)) {
+            Text(title, fontSize = if (compact) 15.sp else 17.sp, fontWeight = FontWeight.Bold, color = INK_V6)
+            Spacer(Modifier.height(if (compact) 6.dp else 9.dp))
             HorizontalDivider(color = LINE_V6)
-            Spacer(Modifier.height(9.dp))
+            Spacer(Modifier.height(if (compact) 6.dp else 9.dp))
             content()
         }
     }
