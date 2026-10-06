@@ -122,7 +122,7 @@ class SequentialAnalysisEngineTest {
         val old = "旧规则|财务资源|财务资源|命中|买书"
         val s = snapshot(yun = "丙午")
         val r = V5AnalysisEngine.analyze(s, time, old)
-        assertTrue(r.signature.startsWith("seq4-"))
+        assertTrue(r.signature.startsWith("seq5-"))
         assertTrue(r.memoryBefore.contains("暂无同类"))
         val g = EnergyGroundedInterpreter.interpret(s, r)
         val saved = GroundedCalibrationEngine.calibrate(r.signature, g, "完成论文投稿", old)
