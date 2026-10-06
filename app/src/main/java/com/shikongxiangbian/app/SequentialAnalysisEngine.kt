@@ -204,11 +204,51 @@ object SequentialAnalysisEngine {
             rootsAndHidden = if (roots.isEmpty()) "四支未见日主同类直接根；生扶之气另列，不能代替通根。" else roots.joinToString("；") { it.text } + "。余气根与本气根不等同；受冲时只标承载待检。",
             sourceAndOutlet = "来处：${field.state(source).brief()}。去处：${field.state(outlet).brief()}。" + pathway(field, source, dayElement, outlet),
             climate = climate(field),
-            energyFlow = core.watch.joinToString("；") { field.state(it).brief() },
+            energyFlow = elements.joinToString("；") { field.state(it).brief() },
             technical = technical.ifEmpty { listOf("未见需优先单列的合冲刑害破。") },
             coreInsight = core.thesis,
-            condition = core.boundary
+            condition = core.boundary,
+            circuits = natalCircuits(field, dayElement),
+            carriers = field.nodes.flatMap { node ->
+                listOf("${node.label}:${node.gan}:${EvidenceChannel.STEM}" to field.carrier(node, node.gan, EvidenceChannel.STEM)) +
+                    node.hiddenGan.map { gan -> "${node.label}:$gan:${EvidenceChannel.BRANCH}" to field.carrier(node, gan, EvidenceChannel.BRANCH) }
+            }.toMap()
         )
+    }
+
+    private fun natalCircuits(field: Field, day: String): List<NatalEnergyCircuit> {
+        val supply = generate.entries.first { it.value == day }.key
+        val output = generate.getValue(day)
+        val resource = control.getValue(day)
+        val pressure = control.entries.first { it.value == day }.key
+        fun stage(element: String): NatalEnergyStage {
+            val visible = field.nodes.filter { it.element == element }
+            val endpoints = visible.map { "${it.label}:${it.gan}:${EvidenceChannel.STEM}" } + field.nodes.flatMap { node ->
+                node.hiddenGan.filter { stems[it] == element }.map { "${node.label}:$it:${EvidenceChannel.BRANCH}" }
+            }
+            return NatalEnergyStage(element, endpoints, visible.any { node ->
+                val state = field.carrier(node, node.gan, EvidenceChannel.STEM)
+                state.available && !state.restricted
+            })
+        }
+        return listOf(
+            "补给与输出" to listOf(supply, day, output),
+            "输出与资源承接" to listOf(day, output, resource),
+            "制约经补给转接" to listOf(pressure, supply, day),
+            "输出反向制约" to listOf(output, pressure),
+            "资源对补给的制约" to listOf(resource, supply)
+        ).map { (name, route) ->
+            val stages = route.map { stage(it) }
+            val relations = route.zipWithNext { a, b -> relation(a, b) }
+            val direction = route.mapIndexed { i, e ->
+                if (i == 0) e else (if (relations[i - 1] == EnergyRelation.CONTROLS) " 制 " else " → ") + e
+            }.joinToString("")
+            val gaps = stages.filter { !it.available }
+            val status = if (gaps.isEmpty()) "显性节点有承载，具体位置、受方需要和相对效力仍待核查" else gaps.joinToString("、") {
+                it.element + if (it.endpoints.isEmpty()) "未见原局端点" else "显性通路待接"
+            }
+            NatalEnergyCircuit(name, stages, relations, "$direction：$status；不据此直接定吉凶或成果。")
+        }
     }
     private fun pathway(field: Field, source: String, day: String, outlet: String): String {
         val steps = listOf(source, day, outlet).map { field.state(it) }
@@ -446,9 +486,14 @@ object SequentialAnalysisEngine {
             }.map { "${it.sourceLabel}${it.sourceGanZhi}另作用${p.sourceLabel}${p.sourceGan}：${it.evidence}不能把前层作用视为始终可兑现。" }
             p.id to PathEnergy(field.carrier(sourceNode, p.sourceGan, p.channel), field.carrier(targetNode, p.targetGan, p.channel), challenges)
         }
-        val eventShape = allPaths.map { p -> listOf(p.sourceGan, p.targetGan, p.natalAnchors.sorted().joinToString(","), p.sourceLabel, p.channel.name, p.techniques.sorted().joinToString(","), finalPathEnergy.getValue(p.id).source.restricted.toString(), finalPathEnergy.getValue(p.id).challenges.joinToString()).joinToString(":") }.distinct().sorted().joinToString("|")
+        val eventShape = allPaths.map { p ->
+            val state = finalPathEnergy.getValue(p.id)
+            listOf(p.sourceGan, p.targetGan, p.natalAnchors.sorted().joinToString(","), p.sourceLabel, p.channel.name,
+                p.relation.name, p.techniques.sorted().joinToString(","), state.source.available.toString(), state.source.restricted.toString(),
+                state.target.available.toString(), state.target.restricted.toString(), state.challenges.joinToString()).joinToString(":")
+        }.distinct().sorted().joinToString("|")
         val shapeHash = java.security.MessageDigest.getInstance("SHA-256").digest(eventShape.toByteArray(Charsets.UTF_8)).take(8).joinToString("") { "%02x".format(it) }
-        val signature = listOf("seq3", natalNodes.joinToString("") { it.gan + it.zhi }, core.issue.name, core.focusElement, field.currentMonth, key?.sourceElement ?: "无", key?.changeRole?.name ?: "无", key?.targetLabel ?: "无", tenGod, key?.relationKind?.name ?: "无", finalSource?.available.toString(), finalSource?.restricted.toString(), shapeHash).joinToString("-")
+        val signature = listOf("seq4", natalNodes.joinToString("") { it.gan + it.zhi }, core.issue.name, core.focusElement, field.currentMonth, key?.sourceElement ?: "无", key?.changeRole?.name ?: "无", key?.targetLabel ?: "无", tenGod, key?.relationKind?.name ?: "无", finalSource?.available.toString(), finalSource?.restricted.toString(), shapeHash).joinToString("-")
         val image = "原局${core.focusElement}承接轴上，${key?.let { "${it.layer}带来${roleName(it.changeRole)}" } ?: "尚无外来变化"}；${climate(field)}"
         val judgment = linkedMapOf("事情类型" to (key?.let { roleName(it.changeRole) } ?: "原局观察"), "领域" to tenGodDomain(tenGod))
         return ReadingV5(natal, layers, qi, image, bodyUse, tenGod, tenGodDomain(tenGod), judgment, signature,

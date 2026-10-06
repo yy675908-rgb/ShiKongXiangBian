@@ -219,13 +219,14 @@ private fun V6App(
                             appendLine(reading.natal.sourceAndOutlet)
                             appendLine(reading.natal.climate)
                             appendLine(reading.natal.energyFlow)
+                            reading.natal.circuits.forEach { appendLine("${it.name}：${it.description}") }
                             appendLine("判断边界：${reading.natal.condition}")
                             appendLine("【连续主线】")
                             appendLine(reading.causalChain)
                             appendLine("【逐层能量变化】")
                             reading.layers.forEach { layer ->
                                 appendLine("${layer.order}. ${layer.layer}${layer.ganZhi}")
-                                appendLine("五行变化：${layer.energyChange}")
+                                appendLine("能量变化：${layer.energyChange}")
                                 appendLine("对既有场：${layer.fieldEffect}")
                                 appendLine("落点：${layer.focus}")
                                 appendLine("入场前：${layer.priorState}")
@@ -240,7 +241,8 @@ private fun V6App(
                             appendLine("【主客体用】")
                             appendLine(reading.bodyUse.joinToString("；"))
                             appendLine("【十神：能量之后的人事翻译】")
-                            appendLine("五行本质：${grounded.tenGod.element}｜${grounded.tenGod.elementNature}")
+                            appendLine("能量本质：${grounded.tenGod.energyEssence}")
+                            appendLine("五行描述：${grounded.tenGod.element}｜${grounded.tenGod.elementNature}")
                             appendLine("当前能量状态：${grounded.tenGod.energyState}")
                             appendLine("与日主关系：${grounded.tenGod.relationToDayMaster}")
                             appendLine("十神：${grounded.tenGod.tenGod}")
@@ -256,6 +258,7 @@ private fun V6App(
                                 appendLine("不成立：${event.invalidIf}")
                                 appendLine("排序依据：${event.priorityReason}")
                                 event.natalContext.forEach { appendLine("原局：$it") }
+                                event.energyProcess.forEach { appendLine("能量本质：$it") }
                                 event.development.forEach { appendLine("承接：$it") }
                                 appendLine("原局承受点：${event.natalAnchors.joinToString("、")}；十神端点：${event.tenGods.joinToString("、")}")
                                 event.evidence.forEach { appendLine(it) }
@@ -452,6 +455,10 @@ private fun V6Natal(natal: NatalAnalysisV5) {
     var expanded by remember(natal) { mutableStateOf(false) }
     V6Section("原局分析 · 一切变化的基础") {
         V6Sub("原局认识 / 后续主线", natal.coreInsight)
+        if (natal.circuits.isNotEmpty()) V6Sub("整体通路", natal.circuits.joinToString("；") { circuit ->
+            "${circuit.name}：" + if (circuit.stages.all { it.available }) "显性节点有承载" else
+                circuit.stages.filter { !it.available }.joinToString("、") { it.element } + "待接"
+        })
         V6Sub("寒热燥湿底色", natal.climate)
         TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起原局依据" else "展开原局依据") }
         if (expanded) {
@@ -460,6 +467,7 @@ private fun V6Natal(natal: NatalAnalysisV5) {
             V6Sub("根与藏干潜气", natal.rootsAndHidden)
             V6Sub("能量来处与去处", natal.sourceAndOutlet)
             V6Sub("原局能量走向", natal.energyFlow)
+            natal.circuits.forEach { V6Sub(it.name, it.description) }
             V6Sub("判断边界", natal.condition)
             V6Label("技术关系（后看）")
             natal.technical.forEach { Text("• $it", modifier = Modifier.padding(top = 4.dp), lineHeight = 20.sp) }
@@ -472,10 +480,10 @@ private fun V6Pipeline() {
     V6Section("分析顺序") {
         Text("原局 → 大运 → 流年 → 流月 → 流日 → 流时", fontWeight = FontWeight.Bold, color = GREEN_V6)
         Spacer(Modifier.height(6.dp))
-        Text("每层：五行能量进入 → 对既有场造成什么变化 → 气势怎样改变 → 再看合冲刑害破等技术如何实现这种变化。", lineHeight = 20.sp)
+        Text("每层：外来能量进入 → 改变既有场的补给、承载、输出与制约 → 气势怎样改变 → 再看干支关系如何实现这种变化。", lineHeight = 20.sp)
         Spacer(Modifier.height(8.dp))
         Text("应事链：时空 ＋ 能量 ＋ 气象 ＋ 主客体用 ＋ 十神 → 应事", fontWeight = FontWeight.SemiBold)
-        Text("其中十神本身也必须先服从五行本质与当前能量状态。", fontSize = 12.sp, color = Color.Gray)
+        Text("先看能量本质、作用方向与耗用，再用五行和十神描述；人事定位服从实际作用。", fontSize = 12.sp, color = Color.Gray)
     }
 }
 
@@ -493,7 +501,7 @@ private fun V6Energy(reading: ReadingV5) {
                 Column(Modifier.padding(12.dp)) {
                     Text("${layer.order}. ${layer.layer} ${layer.ganZhi}", fontWeight = FontWeight.Bold, color = GREEN_V6)
                     Spacer(Modifier.height(7.dp))
-                    V6Label("① 五行能量变化")
+                    V6Label("① 能量作用变化")
                     Text(layer.energyChange, lineHeight = 20.sp)
                     Spacer(Modifier.height(7.dp))
                     V6Label("② 对既有场的改变")
@@ -543,9 +551,9 @@ private fun V6BodyUse(lines: List<String>) {
 @Composable
 private fun V6TenGod(tg: GroundedTenGod) {
     V6Section("十神 · 能量之后的人事翻译") {
-        V6Sub("① 五行本质", "${tg.element}｜${tg.elementNature}")
+        V6Sub("① 能量本质 / 作用过程", tg.energyEssence)
         V6Sub("② 当前能量状态", tg.energyState)
-        V6Sub("③ 与日主的能量关系", tg.relationToDayMaster)
+        V6Sub("③ 五行描述 / 与日主关系", "${tg.element}｜${tg.elementNature}；${tg.relationToDayMaster}")
         V6Label("④ 十神")
         Text(tg.tenGod, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
         Spacer(Modifier.height(7.dp))
@@ -600,6 +608,7 @@ private fun V6EventCard(number: Int, event: EventPrediction) {
             TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起依据与条件" else "查看推导依据与条件") }
             if (expanded) {
                 V6Sub("原局中本项的基础", event.natalContext.joinToString("\n"))
+                V6Sub("本项能量本质 / 作用与耗用", event.energyProcess.joinToString("\n"))
                 V6Sub("本项逐层承接 / 体用与十神", event.development.joinToString("\n"))
                 V6Sub("成立条件", event.condition)
                 V6Sub("不成立时", event.invalidIf)

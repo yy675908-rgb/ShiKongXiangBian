@@ -22,7 +22,7 @@ object GroundedCalibrationEngine {
         val result = when {
             grounded.events.isNotEmpty() && confirmed.isNotEmpty() -> "人工确认"
             grounded.events.isNotEmpty() -> "待逐项核对"
-            (signature.startsWith("seq2-") || signature.startsWith("seq3-")) -> "无具体候选"
+            (signature.startsWith("seq2-") || signature.startsWith("seq3-") || signature.startsWith("seq4-")) -> "无具体候选"
             actualDomain == "其他" -> "待积累"
             domainMatches(predicted, actualDomain) -> "命中"
             related(predicted, actualDomain) -> "部分命中"

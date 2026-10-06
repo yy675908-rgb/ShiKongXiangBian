@@ -11,7 +11,18 @@ data class NatalAnalysisV5(
     val energyFlow: String,
     val technical: List<String>,
     val coreInsight: String = "",
-    val condition: String = ""
+    val condition: String = "",
+    val circuits: List<NatalEnergyCircuit> = emptyList(),
+    val carriers: Map<String, EnergyAvailability> = emptyMap()
+)
+
+/** Qualitative symbolic energy functions, not physical energy measurements. */
+data class NatalEnergyStage(val element: String, val endpoints: List<String>, val available: Boolean)
+data class NatalEnergyCircuit(
+    val name: String,
+    val stages: List<NatalEnergyStage>,
+    val relations: List<EnergyRelation>,
+    val description: String
 )
 
 enum class EnergyRelation { SAME, GENERATES, GENERATED_BY, CONTROLS, CONTROLLED_BY, UNKNOWN }
