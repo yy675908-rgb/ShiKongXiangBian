@@ -14,6 +14,16 @@ android {
         targetSdk = 35
         versionCode = 12
         versionName = "0.12.0"
+        manifestPlaceholders["appLabel"] = "时空象变"
+    }
+
+    buildTypes {
+        getByName("debug") {
+            // Older distributed 0.6 APKs have a different debug certificate.
+            // A separate package lets users try the new build without deleting old records.
+            applicationIdSuffix = ".preview"
+            manifestPlaceholders["appLabel"] = "时空象变·新版"
+        }
     }
 
     compileOptions {

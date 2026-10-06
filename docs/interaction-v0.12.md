@@ -15,3 +15,7 @@
 尚未执行设备上的 UI 点击、旋转与系统重建测试，也未测量帧率、启动时间或低端设备手感；测试通过证明计算与状态协调结果，不代表已完成真机性能验收。
 
 实现参考 Android 官方 [Compose 性能建议](https://developer.android.com/develop/ui/compose/performance/bestpractices) 与 [生命周期协程](https://developer.android.com/topic/libraries/architecture/coroutines)。
+
+## 安装包整理
+
+GitHub 原有 0.6 APK 与最新 0.12 APK 的实际签名证书不同，不能作为同包覆盖更新。调试交付版使用独立包名 `com.shikongxiangbian.app.preview`，图标名称“时空象变·新版”，可与旧版并存，无需卸载旧版。旧记录仍留在旧版，新版需要重新设置本命；不宣称已自动迁移数据。正式 release 包名保留原值。
