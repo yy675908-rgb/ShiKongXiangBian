@@ -16,12 +16,27 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarData
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
@@ -144,15 +159,32 @@ private fun V6App(
     val holder = rememberSaveableStateHolder()
     val analysisScroll = rememberLazyListState()
     val recordsScroll = rememberLazyListState()
+    var recordQuery by rememberSaveable { mutableStateOf("") }
     val settingsScroll = rememberLazyListState()
     val input = ForecastInput(appliedBirth, appliedGender, appliedSect, appliedDate)
     LaunchedEffect(input) { session.request(input) }
     LaunchedEffect(session.notice) {
         session.notice?.let { notice ->
-            val result = snackbar.showSnackbar(notice.text, if (notice.saved) "看记录" else null)
-            if (result == SnackbarResult.ActionPerformed) { recordsScroll.scrollToItem(0); tab = 1 }
+            val result = snackbar.showSnackbar(
+                message = notice.text,
+                actionLabel = if (notice.undoId != null) "撤销" else if (notice.saved) "看记录" else null,
+                withDismissAction = true,
+                duration = if (notice.undoId != null) SnackbarDuration.Long else SnackbarDuration.Short)
+            if (result == SnackbarResult.ActionPerformed) {
+                if (notice.undoId != null) session.undoDeletion(notice.undoId, onSaveFeedback)
+                else if (notice.saved) { focus.clearFocus(); recordQuery = ""; recordsScroll.scrollToItem(0); tab = 1 }
+            }
             session.dismissNotice(notice.id)
         }
+    }
+    fun navigate(next: Int) {
+        focus.clearFocus()
+        snackbar.currentSnackbarData?.dismiss()
+        tab = next
+    }
+    BackHandler(enabled = snackbar.currentSnackbarData != null || (tab != 0 && appliedBirth.isNotBlank())) {
+        focus.clearFocus()
+        if (snackbar.currentSnackbarData != null) snackbar.currentSnackbarData?.dismiss() else tab = 0
     }
     fun applyDate(text: String) {
         val parsed = AnalysisDateInput.parse(text)
@@ -166,14 +198,14 @@ private fun V6App(
     val current = session.forecast?.takeIf { it.input == input }
     Scaffold(
         containerColor = BG_V6,
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { SnackbarHost(snackbar) { data -> key(data) { V6DismissibleSnackbar(data) } } },
         bottomBar = {
             NavigationBar(containerColor = Color.White) {
-                NavigationBarItem(selected = tab == 0, onClick = { focus.clearFocus(); tab = 0 },
+                NavigationBarItem(selected = tab == 0, onClick = { navigate(0) },
                     icon = { Icon(Icons.Outlined.AutoAwesome, null) }, label = { Text("取象") })
-                NavigationBarItem(selected = tab == 1, onClick = { focus.clearFocus(); tab = 1 },
+                NavigationBarItem(selected = tab == 1, onClick = { navigate(1) },
                     icon = { Icon(Icons.Outlined.History, null) }, label = { Text("记录") })
-                NavigationBarItem(selected = tab == 2, onClick = { focus.clearFocus(); tab = 2 },
+                NavigationBarItem(selected = tab == 2, onClick = { navigate(2) },
                     icon = { Icon(Icons.Outlined.Settings, null) }, label = { Text("本命") })
             }
         }
@@ -193,10 +225,17 @@ private fun V6App(
                     actualText = session.draft.actual, onActualText = session::updateActual,
                     lastCorrection = session.correction, lastMemoryAfter = session.memoryAfter,
                     confirmedEvents = session.draft.confirmed, onConfirmEvent = session::confirm,
-                    saving = session.saving,
+                    saving = session.saving || session.recordsEditing,
                     onSaveAndCalibrate = { if (session.input == input) { focus.clearFocus(); session.save(onSaveFeedback) } }
                 )
-                1 -> V6RecordsPage(Modifier.padding(padding).consumeWindowInsets(padding).imePadding(), session.records, session.recordsLoading, recordsScroll)
+                1 -> V6RecordsPage(
+                    modifier = Modifier.padding(padding).consumeWindowInsets(padding).imePadding(), records = session.records,
+                    loading = session.recordsLoading, state = recordsScroll, busy = session.saving || session.recordsEditing,
+                    query = recordQuery, onQuery = { recordQuery = it },
+                    undoId = session.deletionUndo?.id,
+                    onDelete = { session.deleteRecord(it, onSaveFeedback) },
+                    onUndo = { session.undoDeletion(it, onSaveFeedback) },
+                    onCopied = { session.showNotice("已复制记录") })
                 else -> V6SettingsPage(
                     modifier = Modifier.padding(padding).consumeWindowInsets(padding).imePadding(), state = settingsScroll,
                     birthText = birthText, onBirthText = { birthText = it; birthError = null },
@@ -544,60 +583,92 @@ private fun V6EventCard(number: Int, event: EventPrediction, reading: ReadingV5,
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun V6RecordsPage(modifier: Modifier, records: List<StoredAnalysisRecord>, loading: Boolean, state: LazyListState) {
+private fun V6DismissibleSnackbar(data: SnackbarData) {
+    val swipe = rememberSwipeToDismissBoxState(confirmValueChange = { value ->
+        if (value != SwipeToDismissBoxValue.Settled) data.dismiss()
+        true
+    })
+    SwipeToDismissBox(state = swipe, backgroundContent = {}, modifier = Modifier.fillMaxWidth()) {
+        Snackbar(data)
+    }
+}
+
+@Composable
+private fun V6RecordsPage(
+    modifier: Modifier, records: List<StoredAnalysisRecord>, loading: Boolean, state: LazyListState,
+    busy: Boolean, query: String, onQuery: (String) -> Unit, undoId: Long?, onDelete: (String) -> Unit, onUndo: (Long) -> Unit, onCopied: () -> Unit
+) {
+    val filtered = remember(records, query) { records.filter { it.matches(query) } }
+    val clipboard = LocalClipboardManager.current
+    val focus = LocalFocusManager.current
     LazyColumn(
         modifier = modifier.fillMaxSize(), state = state,
         contentPadding = PaddingValues(18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item {
-            Text("应象记录", fontSize = 27.sp, fontWeight = FontWeight.Bold)
-            Text("原始预测、实际发生、校正与记忆分开保存。", fontSize = 13.sp, color = Color.Gray)
+        item(key = "recordsHeader") {
+            Text("应象记录 · ${records.size}", fontSize = 25.sp, fontWeight = FontWeight.Bold)
+            Text("删除仅清理历史记录，校正记忆保留。", fontSize = 12.sp, color = Color.Gray)
+            OutlinedTextField(value = query, onValueChange = onQuery, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                label = { Text("搜索日期或实际经过") }, singleLine = true,
+                leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { onQuery("") }) { Icon(Icons.Outlined.Close, "清空搜索") } },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }))
+            if (undoId != null) TextButton(onClick = { focus.clearFocus(); onUndo(undoId) }, enabled = !busy) { Text("撤销上次删除") }
+            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
         if (loading) {
-            item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            item(key = "recordsLoading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         } else if (records.isEmpty()) {
-            item { V6Section("还没有记录") { Text("保存一次实际事件后，这里会出现完整链条。") } }
+            item(key = "recordsEmpty") { V6Section("还没有记录") { Text("保存实际经过后，可在这里查看。") } }
+        } else if (filtered.isEmpty()) {
+            item(key = "recordsNoMatch") { V6Section("没有匹配记录") {
+                TextButton(onClick = { onQuery(""); focus.clearFocus() }) { Text("清空搜索，查看全部") }
+            } }
         } else {
-            items(records, key = { it.key }, contentType = { "record" }) { record -> V6RecordCard(record.text) }
+            items(filtered, key = { it.key }, contentType = { "record" }) { record ->
+                V6RecordCard(record, busy, onDelete = { focus.clearFocus(); onDelete(record.key) }, onCopy = {
+                    clipboard.setText(AnnotatedString(record.text)); onCopied()
+                })
+            }
         }
     }
 }
 
 @Composable
-private fun V6RecordCard(record: String) {
-    var expanded by rememberSaveable(record) { mutableStateOf(false) }
-    val date = remember(record) { record.lineSequence().firstOrNull().orEmpty() }
-    if (!record.contains("§ORIGINAL")) {
-        V6Section(date) {
-            Text("旧版记录", fontSize = 12.sp, color = GREEN_V6, fontWeight = FontWeight.Bold)
-            Text(record.substringAfter("\n", record), lineHeight = 20.sp)
-        }
-        return
-    }
-    val original = remember(record) { record.substringAfter("§ORIGINAL").substringBefore("§ACTUAL").trim() }
-    val summary = remember(record) { record.substringBefore("§ORIGINAL").substringAfter("§SUMMARY", "").trim() }
-    val actual = remember(record) { record.substringAfter("§ACTUAL").substringBefore("§CALIBRATION").trim() }
-    val calibration = remember(record) { record.substringAfter("§CALIBRATION").trim() }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(18.dp)
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(date, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = INK_V6)
-            Spacer(Modifier.height(10.dp))
-            HorizontalDivider(color = LINE_V6)
-            Spacer(Modifier.height(12.dp))
-            if (summary.isNotBlank()) V6RecordSection("原始判断", summary, SOFT_V6)
-            TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起完整记录" else "查看原始完整推导") }
-            if (expanded) V6RecordSection("完整原始判断", original, SOFT_V6)
-            Spacer(Modifier.height(10.dp))
-            V6RecordSection("当天实际发生", actual, BG_V6)
-            Spacer(Modifier.height(10.dp))
-            V6RecordSection("校正与记忆", calibration, SOFT_V6)
+private fun V6RecordCard(record: StoredAnalysisRecord, busy: Boolean, onDelete: () -> Unit, onCopy: () -> Unit) {
+    var expanded by rememberSaveable(record.key) { mutableStateOf(false) }
+    var originalExpanded by rememberSaveable(record.key) { mutableStateOf(false) }
+    val text = record.text
+    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Text(record.date, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = INK_V6)
+            Text(record.result, fontSize = 12.sp, color = GREEN_V6)
+            if (!expanded) Text(record.actual.ifBlank { "未填写实际经过" }, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text(if (expanded) "收起记录" else "展开记录") }
+                TextButton(onClick = onCopy, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("复制") }
+                TextButton(onClick = onDelete, enabled = !busy, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("删除", color = if (busy) Color.Gray else MaterialTheme.colorScheme.error) }
+            }
+            if (expanded) {
+                if (!text.contains("§ORIGINAL")) {
+                    V6RecordSection("旧版记录", text.substringAfter("\n", text), BG_V6)
+                } else {
+                    val summary = remember(text) { text.substringBefore("§ORIGINAL").substringAfter("§SUMMARY", "").trim() }
+                    V6RecordSection("实际经过", record.actual, BG_V6)
+                    if (summary.isNotBlank()) V6RecordSection("原始判断", summary, SOFT_V6)
+                    TextButton(onClick = { originalExpanded = !originalExpanded }) { Text(if (originalExpanded) "收起完整推导" else "查看完整推导") }
+                    if (originalExpanded) {
+                        val original = remember(text) { text.substringAfter("§ORIGINAL").substringBefore("§ACTUAL").trim() }
+                        V6RecordSection("完整原始判断", original, SOFT_V6)
+                    }
+                    val calibration = remember(text) { text.substringAfter("§CALIBRATION").trim() }
+                    V6RecordSection("校正与记忆", calibration, SOFT_V6)
+                }
+            }
         }
     }
 }

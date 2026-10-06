@@ -35,8 +35,18 @@ data class ForecastInput(val birth: String, val gender: Int, val sect: Int, val 
 data class CompletedForecast(val input: ForecastInput, val snapshot: AnalysisSnapshot,
     val reading: ReadingV5, val grounded: GroundedReading)
 data class FeedbackDraft(val actual: String = "", val confirmed: Set<String> = emptySet())
-data class SessionNotice(val id: Long, val text: String, val saved: Boolean)
-data class StoredAnalysisRecord(val key: String, val text: String)
+data class SessionNotice(val id: Long, val text: String, val saved: Boolean, val undoId: Long? = null)
+data class StoredAnalysisRecord(val key: String, val text: String) {
+    val date = text.lineSequence().firstOrNull().orEmpty()
+    val actual = if (text.contains("§ACTUAL")) text.substringAfter("§ACTUAL").substringBefore("§CALIBRATION").trim()
+        else text.substringAfter("\n", text).trim()
+    val result = if (text.contains("§CALIBRATION")) text.substringAfter("§CALIBRATION").trimStart()
+        .lineSequence().firstOrNull().orEmpty().substringBefore("｜").trim() else "旧版记录"
+    fun matches(query: String): Boolean = query.trim().let { it.isEmpty() ||
+        date.contains(it, ignoreCase = true) || actual.contains(it, ignoreCase = true) || result.contains(it, ignoreCase = true) }
+}
+data class RecordDeletion(val id: Long, val record: StoredAnalysisRecord, val precedingKey: String?,
+    val followingKey: String?, val distanceFromEnd: Int)
 
 /** Main-thread coordinator; CPU work and durable writes run on separate dispatchers. */
 class AnalysisSession(
@@ -61,6 +71,8 @@ class AnalysisSession(
     var saving by mutableStateOf(false); private set
     var recordsLoading by mutableStateOf(true); private set
     var records: List<StoredAnalysisRecord> by mutableStateOf(emptyList()); private set
+    var recordsEditing by mutableStateOf(false); private set
+    var deletionUndo: RecordDeletion? by mutableStateOf(null); private set
     var draft by mutableStateOf(FeedbackDraft()); private set
     var correction by mutableStateOf(""); private set
     var memoryAfter by mutableStateOf(""); private set
@@ -70,6 +82,7 @@ class AnalysisSession(
     private var initialized = false
     private var requestId = 0L
     private var noticeId = 0L
+    private var deletionId = 0L
     private var calculation: Job? = null
     private val drafts = mutableMapOf<ForecastInput, FeedbackDraft>()
     private val corrections = mutableMapOf<ForecastInput, Pair<String, String>>()
@@ -128,12 +141,69 @@ class AnalysisSession(
         input?.let { persistDraft(it, draft) }
     }
     fun dismissNotice(id: Long) { if (notice?.id == id) notice = null }
+    fun showNotice(text: String) { notice = SessionNotice(++noticeId, text, false) }
+
+    fun deleteRecord(key: String, persist: (String, String) -> Unit) {
+        if (saving || recordsEditing || recordsLoading) return
+        val before = records
+        val index = before.indexOfFirst { it.key == key }
+        if (index < 0) return
+        val removed = before[index]
+        val remaining = before.filterIndexed { i, _ -> i != index }
+        val capturedMemory = memory
+        recordsEditing = true
+        scope.launch {
+            try {
+                val raw = withContext(cpu) { remaining.joinToString("\u001E") { it.text } }
+                withContext(io) { persist(raw, capturedMemory) }
+                recordsRaw = raw
+                records = remaining
+                deletionUndo = RecordDeletion(++deletionId, removed, before.getOrNull(index - 1)?.key,
+                    before.getOrNull(index + 1)?.key, before.lastIndex - index)
+                notice = SessionNotice(++noticeId, "已删除记录", false, deletionUndo!!.id)
+            } catch (e: CancellationException) { throw e
+            } catch (_: Exception) {
+                showNotice("删除失败，记录仍保留，请重试")
+            } finally { recordsEditing = false }
+        }
+    }
+
+    fun undoDeletion(id: Long, persist: (String, String) -> Unit) {
+        if (saving || recordsEditing || recordsLoading) return
+        val captured = deletionUndo?.takeIf { it.id == id } ?: return
+        val before = records
+        if (before.any { it.key == captured.record.key }) return
+        val following = before.indexOfFirst { it.key == captured.followingKey }
+        val preceding = before.indexOfFirst { it.key == captured.precedingKey }
+        val index = when {
+            following >= 0 -> following
+            preceding >= 0 -> preceding + 1
+            else -> (before.size - captured.distanceFromEnd).coerceIn(0, before.size)
+        }
+        val restored = before.toMutableList().apply { add(index, captured.record) }.toList()
+        val capturedMemory = memory
+        recordsEditing = true
+        scope.launch {
+            try {
+                val raw = withContext(cpu) { restored.joinToString("\u001E") { it.text } }
+                withContext(io) { persist(raw, capturedMemory) }
+                recordsRaw = raw
+                records = restored
+                if (deletionUndo?.id == id) deletionUndo = null
+                showNotice("已恢复记录")
+            } catch (e: CancellationException) { throw e
+            } catch (_: Exception) {
+                showNotice("恢复失败，可再次点撤销")
+            } finally { recordsEditing = false }
+        }
+    }
 
     fun save(persist: (String, String) -> Unit) {
         val captured = forecast ?: return
-        if (loading || saving || captured.input != input || draft.actual.isBlank()) return
+        if (loading || saving || recordsEditing || recordsLoading || captured.input != input || draft.actual.isBlank()) return
         val submitted = draft
         val previousRecords = recordsRaw
+        val previousIndexed = records
         val previousMemory = memory
         saving = true
         scope.launch {
@@ -143,7 +213,9 @@ class AnalysisSession(
                         captured.grounded, submitted.actual.trim(), previousMemory, submitted.confirmed)
                     val record = AnalysisRecordBuilder.build(captured, submitted.actual, calibration)
                     val raw = if (previousRecords.isBlank()) record else record + "\u001E" + previousRecords
-                    Triple(calibration, raw, indexRecords(raw))
+                    // Stable keys survive deleting a duplicate and prepending a later save.
+                    val added = StoredAnalysisRecord("new:${java.util.UUID.randomUUID()}", record)
+                    Triple(calibration, raw, listOf(added) + previousIndexed)
                 }
                 // One transaction: record and calibration memory succeed or fail together.
                 withContext(io) { persist(prepared.second, prepared.first.memoryRaw) }
