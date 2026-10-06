@@ -26,6 +26,12 @@ data class EnergyAvailability(
     val description: String
 )
 
+data class PathEnergy(
+    val source: EnergyAvailability,
+    val target: EnergyAvailability,
+    val challenges: List<String> = emptyList()
+)
+
 /** One independently inspectable path; the summary's focal layer never filters these out. */
 data class ImpactPath(
     val id: String,
@@ -47,7 +53,8 @@ data class ImpactPath(
     val sourceAtEntry: EnergyAvailability,
     val targetAtEntry: EnergyAvailability,
     val evidence: String,
-    val hiddenTarget: Boolean = false
+    val hiddenTarget: Boolean = false,
+    val targetBefore: EnergyAvailability? = null
 )
 
 data class LayerAnalysisV5(
@@ -99,11 +106,16 @@ data class ReadingV5(
     val finalSourceRestricted: Boolean = false,
     val finalSourceState: String = "",
     val finalEnergy: Map<String, EnergyAvailability> = emptyMap(),
-    val natalEnergy: Map<String, EnergyAvailability> = emptyMap()
+    val natalEnergy: Map<String, EnergyAvailability> = emptyMap(),
+    val finalPathEnergy: Map<String, PathEnergy> = emptyMap()
 ) {
     fun focal(): LayerAnalysisV5? = layers.firstOrNull { it.layer == focalLayer }
         ?: layers.lastOrNull()
     fun allPaths(): List<ImpactPath> = layers.flatMap { it.paths }
+    fun energyOf(path: ImpactPath): PathEnergy = finalPathEnergy[path.id] ?: PathEnergy(
+        finalEnergy[path.sourceElement] ?: path.sourceAtEntry,
+        finalEnergy[path.targetElement] ?: path.targetAtEntry
+    )
 }
 
 data class CalibrationV5(

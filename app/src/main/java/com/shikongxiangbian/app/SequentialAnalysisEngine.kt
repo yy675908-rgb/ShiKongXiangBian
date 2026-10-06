@@ -56,8 +56,23 @@ object SequentialAnalysisEngine {
                 if (stems[gan] == element) Root(n, gan, i == 0, selected.any { other -> other.label != n.label && pair(n.zhi, other.zhi) in chong }) else null
             } }
             val visible = selected.filter { it.element == element }
-            val tied = visible.filter { n -> selected.any { other -> other.label != n.label && pair(n.gan, other.gan) in stemHe } }.map { it.label }.toSet()
+            // A direct day-master combination is not automatically a removal/binding.
+            val tied = visible.filter { n -> n.label != "日柱" && selected.any { other -> other.label != n.label && other.label != "日柱" && pair(n.gan, other.gan) in stemHe } }.map { it.label }.toSet()
             return ElementState(element, visible, roots, seasonRelation(element, if (natalOnly) natalMonth else currentMonth), tied)
+        }
+        fun carrier(node: Node, gan: String, channel: EvidenceChannel): EnergyAvailability {
+            val aggregate = state(stems.getValue(gan))
+            val ownTie = channel == EvidenceChannel.STEM && node.label != "日柱" && nodes.any {
+                it.label != node.label && it.label != "日柱" && pair(gan, it.gan) in stemHe
+            }
+            val rootsRestricted = aggregate.rooted && aggregate.roots.all { it.disturbed }
+            val restricted = ownTie || rootsRestricted
+            return aggregate.evidence().copy(restricted = restricted,
+                description = aggregate.brief() + "；本路径${node.label}${gan}：" + when {
+                    ownTie -> "另与旁干牵合，不能借别处同五行解除本干牵连"
+                    rootsRestricted -> "同类根均受冲，作用承载待比较"
+                    else -> "未见本通道被旁干牵合，其他同五行状态另看"
+                })
         }
         fun append(n: Node): Field = copy(nodes = nodes + n, currentMonth = if (n.label == "流月") n.zhi else currentMonth)
         fun routes(element: String): String {
@@ -203,10 +218,12 @@ object SequentialAnalysisEngine {
 
     private fun contacts(a: Node, b: Node, field: Field): List<Contact> = buildList {
         stemHe[pair(a.gan, b.gan)]?.let { transformed ->
-            val competing = field.nodes.any { it.label != b.label && pair(a.gan, it.gan) in stemHe }
+            val competing = field.nodes.any { it.label != a.label && it.label != b.label && (pair(a.gan, it.gan) in stemHe || pair(b.gan, it.gan) in stemHe) }
+            val own = a.label == "日柱" || b.label == "日柱"
             val season = seasonRelation(transformed, field.currentMonth)
-            add(Contact(b, EvidenceChannel.STEM, a.element, b.element, relation(a.element, b.element), setOf("天干合"),
-                "干：${a.label}${a.gan}与${b.label}${b.gan}相合，先看牵合；化${transformed}仅为候选（$season${if (competing) "，另有争合" else ""}），未自动改五行。"))
+            val tags = buildSet { add("天干合"); add(if (own) "日主自合" else "旁干牵合"); if (competing) add("争合待判") }
+            add(Contact(b, EvidenceChannel.STEM, a.element, b.element, relation(a.element, b.element), tags,
+                "干：${a.label}${a.gan}与${b.label}${b.gan}相合；${if (own) "日主自合，不直接按合去或合绊" else "旁干牵合，作用承接待检"}；化${transformed}仅为候选（$season${if (competing) "，另有多干合意，先后与距离待判" else ""}），未自动改五行。"))
         }
         val terms = buildSet {
             val p = pair(a.zhi, b.zhi)
@@ -279,9 +296,9 @@ object SequentialAnalysisEngine {
                 sourceGan = sourceGan, sourceElement = source, targetLabel = target.label, targetGanZhi = target.gan + target.zhi,
                 targetGan = targetGan, targetElement = targetElement, targetNatal = target.natal, channel = channel,
                 relation = relation(source, targetElement), techniques = techniques, natalAnchors = anchors,
-                inheritedPathIds = parents.map { it.id }, sourceAtEntry = after.state(source).evidence(), targetAtEntry = after.state(targetElement).evidence(),
+                inheritedPathIds = parents.map { it.id }, sourceAtEntry = after.carrier(incoming, sourceGan, channel), targetAtEntry = after.carrier(target, targetGan, channel),
                 evidence = detail + " ${sourceGan}${source} → ${targetGan}${targetElement}：${relationText(source, targetElement)}。",
-                hiddenTarget = channel == EvidenceChannel.BRANCH
+                hiddenTarget = channel == EvidenceChannel.BRANCH, targetBefore = before.carrier(target, targetGan, channel)
             )
         }
         return buildList {
@@ -295,12 +312,14 @@ object SequentialAnalysisEngine {
                     }
                 }
             }
-            val day = before.nodes.first { it.label == "日柱" }
-            if (contacts.none { it.target.label == day.label && it.channel == EvidenceChannel.STEM }) {
-                add(make(day, incoming.gan, day.gan, EvidenceChannel.STEM, emptySet(), "干：${incoming.text}的显气与日主${day.gan}相接；${after.state(incoming.element).brief()}。"))
+            before.nodes.filter { target ->
+                contacts.none { it.target.label == target.label && it.channel == EvidenceChannel.STEM } &&
+                    (target.label == "日柱" || relation(incoming.element, target.element) in setOf(EnergyRelation.GENERATES, EnergyRelation.CONTROLS))
+            }.forEach { target ->
+                add(make(target, incoming.gan, target.gan, EvidenceChannel.STEM, emptySet(), "干：${incoming.text}的显气作用${target.text}；普通生克通路，效力需检验根源与先后。"))
             }
             newGroups.forEach { group ->
-                val sourceGan = after.nodes.filter { it.zhi in group.branches }.flatMap { it.hiddenGan }.first { stems[it] == group.element }
+                val sourceGan = incoming.hiddenGan.first { stems[it] == group.element }
                 before.nodes.filter { it.zhi in group.branches }.forEach { member ->
                     member.hiddenGan.filter { stems[it] == group.element }.forEach { targetGan ->
                         add(make(member, sourceGan, targetGan, EvidenceChannel.BRANCH, setOf(group.name), groupDetail(group, after)))
@@ -329,7 +348,7 @@ object SequentialAnalysisEngine {
             ?: before.nodes.firstOrNull { it.hiddenGan.any { g -> stems[g] == core.focusElement } }
         val targetElement = if (pivotGroup != null) core.focusElement else selected?.targetElement ?: core.focusElement
         val kind = relation(source, targetElement)
-        val techniques = selected?.techniques.orEmpty() + if (pivotGroup == null) emptySet() else setOf(pivotGroup.name)
+        val techniques = if (pivotGroup == null) selected?.techniques.orEmpty() else setOf(pivotGroup.name)
         val delta = stateDelta(before, after, core, incoming)
         val changedPivot = incoming.element == core.focusElement || incoming.hiddenGan.any { stems[it] == core.focusElement }
         val coreInteraction = selected?.target?.label in core.anchors || pivotGroup != null
@@ -337,11 +356,12 @@ object SequentialAnalysisEngine {
         val directToCore = relation(source, core.focusElement)
         val activeRoute = after.state(source).available && directToCore in setOf(EnergyRelation.SAME, EnergyRelation.GENERATES, EnergyRelation.GENERATED_BY, EnergyRelation.CONTROLS)
         val affects = changedPivot || coreInteraction || continues.isNotEmpty() || incoming.label == "流月" || activeRoute
-        val sourceAvailable = after.state(source).available && (channel == EvidenceChannel.STEM || after.state(source).expressed)
-        val sourceRestricted = after.state(source).restricted
+        val carrier = after.carrier(incoming, driver, channel)
+        val sourceAvailable = carrier.available
+        val sourceRestricted = carrier.restricted
         val role = when {
             selected?.channel == EvidenceChannel.BRANCH && "冲" in techniques && coreInteraction -> ChangeRole.DISTURB
-            "天干合" in techniques && coreInteraction -> ChangeRole.TIE
+            "天干合" in techniques && "日主自合" !in techniques && coreInteraction -> ChangeRole.TIE
             delta.any { it.startsWith(core.focusElement) } -> ChangeRole.SUPPLEMENT
             !affects -> ChangeRole.BACKGROUND
             relation(source, core.focusElement) == EnergyRelation.SAME -> ChangeRole.REINFORCE
@@ -415,16 +435,26 @@ object SequentialAnalysisEngine {
             "用：" + (key?.let { "${it.layer}${it.ganZhi}的${if (it.channel == EvidenceChannel.STEM) "干" else "支"}${it.sourceElement}气" } ?: "未定") + (if (trigger != null && trigger.layer != key?.layer) "；${trigger.layer}继续触发" else "")
         )
         // Versioned signature includes natal structure and condition; old broad keys do not silently mix.
-        val finalSource = key?.let { field.state(it.sourceElement) }
-        val eventShape = layers.flatMap { it.paths }.map { listOf(it.sourceElement, it.targetElement, it.natalAnchors.sorted().joinToString(","), it.sourceLabel, it.channel.name, it.techniques.sorted().joinToString(",")).joinToString(":") }.distinct().sorted().joinToString("|")
+        val finalSource = key?.let { field.carrier(field.nodes.first { node -> node.label == it.layer }, it.driverGan, it.channel) }
+        val allPaths = layers.flatMap { it.paths }
+        val finalPathEnergy = allPaths.associate { p ->
+            val sourceNode = field.nodes.first { it.label == p.sourceLabel }
+            val targetNode = field.nodes.first { it.label == p.targetLabel }
+            val challenges = allPaths.filter { later ->
+                later.order > p.order && later.targetLabel == p.sourceLabel && later.targetGan == p.sourceGan && later.channel == p.channel &&
+                    (later.relation == EnergyRelation.CONTROLS || "旁干牵合" in later.techniques || later.techniques.any { it in setOf("冲", "三刑", "刑", "自刑", "害", "破") })
+            }.map { "${it.sourceLabel}${it.sourceGanZhi}另作用${p.sourceLabel}${p.sourceGan}：${it.evidence}不能把前层作用视为始终可兑现。" }
+            p.id to PathEnergy(field.carrier(sourceNode, p.sourceGan, p.channel), field.carrier(targetNode, p.targetGan, p.channel), challenges)
+        }
+        val eventShape = allPaths.map { p -> listOf(p.sourceGan, p.targetGan, p.natalAnchors.sorted().joinToString(","), p.sourceLabel, p.channel.name, p.techniques.sorted().joinToString(","), finalPathEnergy.getValue(p.id).source.restricted.toString(), finalPathEnergy.getValue(p.id).challenges.joinToString()).joinToString(":") }.distinct().sorted().joinToString("|")
         val shapeHash = java.security.MessageDigest.getInstance("SHA-256").digest(eventShape.toByteArray(Charsets.UTF_8)).take(8).joinToString("") { "%02x".format(it) }
-        val signature = listOf("seq2", natalNodes.joinToString("") { it.gan + it.zhi }, core.issue.name, core.focusElement, field.currentMonth, key?.sourceElement ?: "无", key?.changeRole?.name ?: "无", key?.targetLabel ?: "无", tenGod, key?.relationKind?.name ?: "无", finalSource?.available.toString(), finalSource?.restricted.toString(), shapeHash).joinToString("-")
+        val signature = listOf("seq3", natalNodes.joinToString("") { it.gan + it.zhi }, core.issue.name, core.focusElement, field.currentMonth, key?.sourceElement ?: "无", key?.changeRole?.name ?: "无", key?.targetLabel ?: "无", tenGod, key?.relationKind?.name ?: "无", finalSource?.available.toString(), finalSource?.restricted.toString(), shapeHash).joinToString("-")
         val image = "原局${core.focusElement}承接轴上，${key?.let { "${it.layer}带来${roleName(it.changeRole)}" } ?: "尚无外来变化"}；${climate(field)}"
         val judgment = linkedMapOf("事情类型" to (key?.let { roleName(it.changeRole) } ?: "原局观察"), "领域" to tenGodDomain(tenGod))
         return ReadingV5(natal, layers, qi, image, bodyUse, tenGod, tenGodDomain(tenGod), judgment, signature,
             GroundedCalibrationEngine.memorySummary(memoryRaw, signature), key?.layer, chain, climate(field), trigger?.layer,
-            finalSource?.available ?: false, finalSource?.restricted ?: false, finalSource?.brief().orEmpty(),
-            elements.associateWith { field.state(it).evidence() }, natalEnergy)
+            finalSource?.available ?: false, finalSource?.restricted ?: false, finalSource?.description.orEmpty(),
+            elements.associateWith { field.state(it).evidence() }, natalEnergy, finalPathEnergy)
     }
     fun roleName(role: ChangeRole): String = when (role) {
         ChangeRole.SUPPLEMENT -> "补入承接条件"
@@ -438,9 +468,9 @@ object SequentialAnalysisEngine {
     private fun buildQi(field: Field, core: Core, key: LayerAnalysisV5?, trigger: LayerAnalysisV5?): List<String> {
         val focus = field.state(core.focusElement)
         val direction = when (key?.sourceElement) { "木" -> "生发向外"; "火" -> "上炎向外"; "土" -> "向中承载"; "金" -> "内收肃降"; "水" -> "下行内藏"; else -> "未定" }
-        val source = key?.let { field.state(it.sourceElement) }
+        val source = key?.let { field.carrier(field.nodes.first { node -> node.label == it.layer }, it.driverGan, it.channel) }
         val sourceState = when { key == null -> "未加入外来层"; source?.restricted == true -> "${key.sourceElement}入场但承载受牵，不能直接判起势"; source?.available == true -> "${key.sourceElement}有显性承载，${roleName(key.changeRole)}"; else -> "${key.sourceElement}入场，显性承载未充分成立" }
-        val gathering = when { key == null -> "原局观察"; "冲" in key.techniques && ("六合" in key.techniques || "天干合" in key.techniques) -> "同落点冲合并见，不能单定聚散"; "冲" in key.techniques -> "承载被引动，是否散取决于双方根源"; "天干合" in key.techniques || "六合" in key.techniques -> "相牵，聚合与合绊待分"; else -> "未见足够证据定单向聚散" }
+        val gathering = when { key == null -> "原局观察"; "冲" in key.techniques && ("六合" in key.techniques || "天干合" in key.techniques) -> "同落点冲合并见，不能单定聚散"; "冲" in key.techniques -> "承载被引动，是否散取决于双方根源"; "日主自合" in key.techniques -> "与主体直接相合，不先按合去处理"; "天干合" in key.techniques || "六合" in key.techniques -> "相牵，聚合与合绊待分"; else -> "未见足够证据定单向聚散" }
         return listOf(
             "谁在起势：$sourceState",
             "谁在退：${when (key?.changeRole) { ChangeRole.DRAIN -> "${core.focusElement}向外传递，退势仍取决于补给"; ChangeRole.RESTRAIN -> "${core.focusElement}受制约候选；不能见克即定衰退"; else -> "暂不能确认单方退势" }}",

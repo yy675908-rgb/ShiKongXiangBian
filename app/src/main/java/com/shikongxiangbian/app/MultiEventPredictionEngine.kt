@@ -7,7 +7,7 @@ enum class EventDomain(val title: String) {
 }
 enum class EventPriority(val title: String) { FOCUS("优先关注"), POSSIBLE("次要可能"), WATCH("条件待补") }
 enum class EventDirection { SUPPORT, STRAIN, CHANGE, REPEAT }
-enum class EventPattern { MOVE, HIDDEN_ISSUE, INTERRUPTED_REST, RESOURCE_TRANSFER, RESOURCE_DELAY, RESOURCE_GAIN, NEGOTIATE, OUTPUT, REWORK, ADDED_DEMAND, RECHECK_RULES, RECEIVE_SUPPORT, RECHECK_DOCUMENTS, COORDINATE, ALLOCATION_FRICTION }
+enum class EventPattern { MOVE, HIDDEN_ISSUE, INTERRUPTED_REST, RESOURCE_TRANSFER, RESOURCE_DELAY, RESOURCE_GAIN, NEGOTIATE, OUTPUT, REWORK, ADDED_DEMAND, CONFIRM_TERMS, RECHECK_RULES, RECEIVE_SUPPORT, RECHECK_DOCUMENTS, COORDINATE, ALLOCATION_FRICTION }
 
 data class EventPrediction(
     val id: String,
@@ -28,7 +28,9 @@ data class EventPrediction(
     val latestLayer: String,
     val natalContext: List<String>,
     val development: List<String>,
-    val conflictsWith: Set<String> = emptySet()
+    val conflictsWith: Set<String> = emptySet(),
+    val endpointKeys: Set<String> = emptySet(),
+    val keyBasis: String = ""
 )
 
 data class EventConnection(val fromId: String, val toId: String, val description: String, val condition: String)
@@ -48,49 +50,63 @@ object MultiEventPredictionEngine {
         val paths = reading.allPaths().filter { it.natalAnchors.isNotEmpty() }
         val seeds = paths.flatMap { p -> derive(snapshot.dayMaster, p, reading) }
         val byId = paths.associateBy { it.id }
-        fun ancestry(p: ImpactPath): List<ImpactPath> = (p.inheritedPathIds.flatMap { id -> byId[id]?.let { ancestry(it) } ?: emptyList() } + p).distinctBy { it.id }
+        val ancestryCache = mutableMapOf<String, List<ImpactPath>>()
+        fun ancestry(p: ImpactPath): List<ImpactPath> = ancestryCache.getOrPut(p.id) {
+            (p.inheritedPathIds.flatMap { id -> byId[id]?.let { ancestry(it) } ?: emptyList() } + p).distinctBy { it.id }
+        }
         val grouped = seeds.groupBy { it.domain.name + ":" + it.pattern.name }
         val events = grouped.map { (key, members) ->
             val evidencePaths = members.map { it.path }.distinctBy { it.id }
             val routes = evidencePaths.flatMap { ancestry(it) }.distinctBy { it.id }.sortedBy { it.order }
             val natalEndpoints = routes.filter { it.targetNatal }.distinctBy { it.targetLabel to it.targetGan }
-            val latest = evidencePaths.maxBy { it.order }
             fun endpointKeys(p: ImpactPath) = ancestry(p).filter { it.targetNatal }.map { "${it.targetLabel}:${it.targetGan}:${it.channel}" }.toSet()
             fun structural(p: ImpactPath) = p.techniques.any { it in disrupting || it in setOf("六合", "天干合", "三合", "三会") }
-            fun unresolved(p: ImpactPath) = p.techniques.any { it in setOf("刑意（未齐）", "三合", "三会") }
+            fun unresolved(p: ImpactPath) = p.techniques.any { it in setOf("刑意（未齐）", "三合", "三会", "争合待判") }
             fun clear(p: ImpactPath): Boolean {
-                val energy = reading.finalEnergy[p.sourceElement] ?: p.sourceAtEntry
-                val target = reading.finalEnergy[p.targetElement] ?: p.targetAtEntry
+                val state = reading.energyOf(p)
+                val energy = state.source
+                val target = state.target
                 return energy.available && !energy.restricted && (!p.hiddenTarget || target.expressed) &&
-                    (members.first().direction != EventDirection.SUPPORT || !target.restricted)
+                    state.challenges.isEmpty() && (members.first().direction != EventDirection.SUPPORT || !target.restricted)
             }
             val nearPaths = evidencePaths.filter { it.sourceLabel in setOf("流日", "流时") }
             val aligned = nearPaths.any { p -> structural(p) && clear(p) && !unresolved(p) && evidencePaths.any { earlier ->
-                earlier.sourceLabel != p.sourceLabel && earlier.order < p.order && endpointKeys(p).intersect(endpointKeys(earlier)).isNotEmpty()
+                earlier.sourceLabel != p.sourceLabel && earlier.order < p.order && clear(earlier) && !unresolved(earlier) && endpointKeys(p).intersect(endpointKeys(earlier)).isNotEmpty()
             } }
-            val possible = nearPaths.any { p ->
-                val energy = reading.finalEnergy[p.sourceElement] ?: p.sourceAtEntry
-                clear(p) || (structural(p) && energy.rooted && !energy.restricted)
+            fun usable(p: ImpactPath): Boolean {
+                val state = reading.energyOf(p)
+                return clear(p) || (structural(p) && state.source.rooted && !state.source.restricted && state.challenges.isEmpty())
             }
+            val possible = nearPaths.any { usable(it) }
+            // A constrained hour path cannot borrow a clear day path to claim an hour trigger.
+            val usablePaths = evidencePaths.filter { usable(it) }
+            val latest = usablePaths.maxByOrNull { it.order } ?: evidencePaths.maxBy { it.order }
             val priority = when { aligned -> EventPriority.FOCUS; possible -> EventPriority.POSSIBLE; else -> EventPriority.WATCH }
             val reason = when (priority) {
                 EventPriority.FOCUS -> "不同层承接同一事项路径，日/时已触及，且至少一条显性承载条件较齐；这是结构排序，不是命中概率。"
                 EventPriority.POSSIBLE -> "已有日/时作用依据，但通路承载、重复承接或现实场景尚未全部确认。"
-                EventPriority.WATCH -> "只有较远背景、潜藏端点或承载待补，暂不列为近期重点。"
-            }
+                EventPriority.WATCH -> when {
+                    nearPaths.isEmpty() -> "只有运/年/月背景，未见本项日/时承接，暂不列为近期重点。"
+                    nearPaths.any { reading.energyOf(it).challenges.isNotEmpty() } -> "近端来源又被后层作用，原先通路能否延续待检，不能直接沿用早层结论。"
+                    nearPaths.all { reading.energyOf(it).source.restricted } -> "本项近端来源仍受牵制；别处同五行有承载不等于此路径恢复。"
+                    else -> "近端关系已列，但显性端点或作用承载未齐，暂不列为近期重点。"
+                }
+            } + if (evidencePaths.any { it.order > latest.order }) " 较晚层另有待检依据，本项窗口按仍可承接的${latest.sourceLabel}，不借用较晚层提高应期精度。" else ""
             val facts = evidencePaths.flatMap { p ->
                 listOf(
                     p.evidence,
                     "${p.sourceLabel}入场时：${p.sourceAtEntry.description}；作用端：${p.targetAtEntry.description}。",
                     "原局落点：${p.natalAnchors.sorted().joinToString("、")}；${if (p.hiddenTarget) "支中${p.targetGan}的人事端点" else "天干${p.targetGan}的人事端点"}。"
                 )
-            }.distinct() + evidencePaths.map { p ->
-                "全链后${p.sourceElement}：${(reading.finalEnergy[p.sourceElement] ?: p.sourceAtEntry).description}。"
+            }.distinct() + evidencePaths.flatMap { p ->
+                val state = reading.energyOf(p)
+                listOf("原有作用端：${p.targetBefore?.description ?: p.targetAtEntry.description}。",
+                    "全链后本路径来源：${state.source.description}。", "全链后本路径作用端：${state.target.description}。") + state.challenges
             }.distinct()
             EventPrediction(
                 id = key, domain = members.first().domain, pattern = members.first().pattern, direction = members.first().direction,
                 title = members.first().title, possibilities = members.flatMap { it.possibilities }.distinct(), priority = priority, priorityReason = reason,
-                timeWindow = window(latest.sourceLabel), condition = members.map { it.condition }.distinct().joinToString("；"),
+                timeWindow = if (usablePaths.isEmpty()) "${latest.sourceLabel}关系待检，尚未成立有效触发；应期未定" else window(latest.sourceLabel), condition = members.map { it.condition }.distinct().joinToString("；"),
                 invalidIf = members.map { it.invalidIf }.distinct().joinToString("；"), evidence = facts,
                 pathIds = evidencePaths.map { it.id }.toSet(), natalAnchors = evidencePaths.flatMap { it.natalAnchors }.toSet(),
                 tenGods = members.flatMap { it.gods }.toSet(), latestLayer = latest.sourceLabel,
@@ -101,12 +117,13 @@ object MultiEventPredictionEngine {
                     val sourceGod = GanZhiEngine.tenGod(snapshot.dayMaster, p.sourceGan)
                     val targetGod = GanZhiEngine.tenGod(snapshot.dayMaster, p.targetGan)
                     "${p.sourceLabel}${p.sourceGanZhi}：${p.sourceGan}${p.sourceElement}（$sourceGod；${EnergyGroundedInterpreter.nature(p.sourceElement)}）经${if (p.channel == EvidenceChannel.STEM) "显气" else "支气承载"}${p.techniques.sorted().joinToString("/", prefix = if (p.techniques.isEmpty()) "" else "·")}作用于${p.targetLabel}${p.targetGanZhi}的${p.targetGan}${p.targetElement}（$targetGod）；${relationMeaning(p.relation)}。${if (p.targetNatal) "本命为体，此层为用" else "先作用前层，再沿已建立通路承接本命"}。"
-                }
+                }, endpointKeys = evidencePaths.flatMap { endpointKeys(it) }.toSet(),
+                keyBasis = "${latest.sourceLabel}${latest.sourceGanZhi}的${latest.sourceGan}${latest.sourceElement} → ${latest.targetLabel}${latest.targetGanZhi}的${latest.targetGan}${latest.targetElement}；${latest.techniques.sorted().joinToString("/", postfix = if (latest.techniques.isEmpty()) "" else "，")}${relationMeaning(latest.relation)}" + if (!usable(latest)) "；本项承载待补" else ""
             )
         }
         // Opposed readings remain explicit alternatives; don't call both equally certain.
         val contrasted = events.map { e ->
-            val opponents = events.filter { other -> other.id != e.id && other.domain == e.domain && other.natalAnchors.intersect(e.natalAnchors).isNotEmpty() && setOf(e.direction, other.direction) == setOf(EventDirection.SUPPORT, EventDirection.STRAIN) }
+            val opponents = events.filter { other -> other.id != e.id && other.domain == e.domain && other.endpointKeys.intersect(e.endpointKeys).isNotEmpty() && setOf(e.direction, other.direction) == setOf(EventDirection.SUPPORT, EventDirection.STRAIN) }
             if (opponents.isEmpty()) e else e.copy(priority = if (e.priority == EventPriority.FOCUS) EventPriority.POSSIBLE else e.priority,
                 priorityReason = e.priorityReason + " 同一承受点另有相反通路，需按各自条件区分。", conflictsWith = opponents.map { it.id }.toSet())
         }.sortedWith(compareBy<EventPrediction> { it.priority.ordinal }.thenByDescending { layerOrder(it.latestLayer) }.thenBy { it.domain.ordinal }.thenBy { it.id })
@@ -117,11 +134,12 @@ object MultiEventPredictionEngine {
         val sourceGod = GanZhiEngine.tenGod(dayMaster, p.sourceGan)
         val targetGod = GanZhiEngine.tenGod(dayMaster, p.targetGan)
         val gods = setOf(sourceGod, targetGod)
-        val source = reading.finalEnergy[p.sourceElement] ?: p.sourceAtEntry
-        val target = reading.finalEnergy[p.targetElement] ?: p.targetAtEntry
+        val source = reading.energyOf(p).source
+        val target = reading.energyOf(p).target
         val disturbance = p.techniques.any { it in disrupting }
-        val tying = p.techniques.any { it in setOf("六合", "天干合") }
-        val reappearance = p.techniques.any { it in setOf("同支", "伏吟", "自刑") }
+        val ownCombination = "日主自合" in p.techniques
+        val tying = "天干合" in p.techniques && !ownCombination
+        val linking = "六合" in p.techniques || ownCombination
         val nearSelf = p.natalAnchors.any { it in setOf("日柱", "时柱") }
         val visibleEndpoint = !p.hiddenTarget || target.expressed
         fun emit(domain: EventDomain, pattern: EventPattern, direction: EventDirection, title: String, alternatives: List<String>, condition: String, invalid: String) {
@@ -138,7 +156,7 @@ object MultiEventPredictionEngine {
                 listOf("使用中发现先前未留意的异常、故障或杂物", "反复检查、清理或更换受影响用品"),
                 "本人正在使用相关空间或用品，且问题确有显现条件", "未出现可观察问题时，这条只是隐性牵扯候选；不能锁定异常物的种类")
         }
-        if (p.channel == EvidenceChannel.BRANCH && nearSelf && (disturbance || reappearance)) {
+        if (p.channel == EvidenceChannel.BRANCH && nearSelf && disturbance) {
             emit(EventDomain.REST, EventPattern.INTERRUPTED_REST, EventDirection.STRAIN, "休息或日常节奏被打断",
                 listOf("因周围事项需要反复处理、确认，原定休息推迟", "中途起身、重新安排休息或日常流程"),
                 "这条近端承载变化确实落入本人休息或日常过程", "若只是工作或外部事项受扰，不能直接断失眠，更不能确定持续时长")
@@ -175,7 +193,11 @@ object MultiEventPredictionEngine {
                 listOf("集中回复、说明、写作/汇报或完成一次操作", "把已有想法、处理方案推进为实际行动"),
                 "主体具备可用承载，也有真实输出需求", "若主气/泄口受牵制，转为条件待补，不断必然完成成果")
         }
-        if (sourceGod in authority && p.targetLabel == "日柱" && p.channel == EvidenceChannel.STEM) {
+        if (sourceGod in authority && p.targetLabel == "日柱" && p.channel == EvidenceChannel.STEM && ownCombination) {
+            emit(EventDomain.TASKS, EventPattern.CONFIRM_TERMS, EventDirection.CHANGE, "确认任务或合作的具体约定",
+                listOf("与对接方确认职责、要求或执行条件", "把已有任务或合作落实为一次具体约定"),
+                "日主自合官气，现实中有明确任务或对接事项，且无另一路旁干争合截断承接", "自合不能直接取被迫、受罚或婚恋事件；有旁干牵连时约定能否落实待检")
+        } else if (sourceGod in authority && p.targetLabel == "日柱" && p.channel == EvidenceChannel.STEM) {
             emit(EventDomain.TASKS, EventPattern.ADDED_DEMAND, EventDirection.STRAIN, "临时要求或规则事项落到本人",
                 listOf("被催办、追加一项要求，或被要求补交/按规则重做", "临时处理责任、检查或对接环节"),
                 "克我之气有现实任务或规则载体，能够作用主体", "官杀自身受制或缺乏载体时，不能断主体压力必然增大")
@@ -193,7 +215,7 @@ object MultiEventPredictionEngine {
                 listOf("收到消息/资料、补齐所需材料或确认信息", "得到一次协助，原有事项获得可用支持"),
                 "生我之气具备承载，现实中有信息或支持来源", "来源未兑现、印气受牵制时，只保留为候选")
         }
-        if (sourceGod in peers && (targetGod in peers || tying || disturbance)) {
+        if (sourceGod in peers && (targetGod in peers || tying || linking || disturbance)) {
             emit(EventDomain.RELATIONSHIPS, if (targetStrained) EventPattern.ALLOCATION_FRICTION else EventPattern.COORDINATE,
                 if (targetStrained) EventDirection.STRAIN else EventDirection.SUPPORT,
                 if (targetStrained) "同辈或共同事项的分配反复" else "协作或分工得到落实",

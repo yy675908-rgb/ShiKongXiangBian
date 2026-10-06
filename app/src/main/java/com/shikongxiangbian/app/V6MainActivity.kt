@@ -250,6 +250,7 @@ private fun V6App(
                             appendLine("【逐项可能应事】")
                             grounded.events.forEachIndexed { index, event ->
                                 appendLine("${index + 1}. ${event.title}｜${event.priority.title}｜${event.timeWindow}")
+                                appendLine("关键依据：${event.keyBasis}")
                                 appendLine("可能：${event.possibilities.joinToString("；")}")
                                 appendLine("条件：${event.condition}")
                                 appendLine("不成立：${event.invalidIf}")
@@ -571,9 +572,11 @@ private fun V6Judgment(grounded: GroundedReading) {
             if (pending.isNotEmpty() && main.isNotEmpty()) {
                 TextButton(onClick = { showPending = !showPending }) { Text(if (showPending) "收起条件待补事项" else "展开条件待补事项（${pending.size}）") }
             }
-            if (grounded.connections.isNotEmpty()) {
+            val shownIds = shown.map { it.id }.toSet()
+            val shownLinks = grounded.connections.filter { it.fromId in shownIds && it.toId in shownIds }
+            if (shownLinks.isNotEmpty()) {
                 V6Label("共享作用依据的条件性接续")
-                grounded.connections.forEach { link ->
+                shownLinks.forEach { link ->
                     val from = grounded.events.indexOfFirst { it.id == link.fromId } + 1
                     val to = grounded.events.indexOfFirst { it.id == link.toId } + 1
                     Text("$from → $to：${link.description}", fontSize = 13.sp, lineHeight = 19.sp)
@@ -591,6 +594,7 @@ private fun V6EventCard(number: Int, event: EventPrediction) {
         Column(Modifier.padding(12.dp)) {
             Text("$number. ${event.title}", fontWeight = FontWeight.Bold, color = GREEN_V6)
             Text("${event.priority.title} · ${event.domain.title} · ${event.timeWindow}", fontSize = 11.sp, color = Color.Gray)
+            Text(event.keyBasis, fontSize = 12.sp, lineHeight = 18.sp, color = GREEN_V6)
             event.possibilities.forEach { Text("• $it", lineHeight = 20.sp) }
             if (event.conflictsWith.isNotEmpty()) Text("另有相反通路，需按各自条件区分。", fontSize = 12.sp, color = GREEN_V6)
             TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起依据与条件" else "查看推导依据与条件") }
