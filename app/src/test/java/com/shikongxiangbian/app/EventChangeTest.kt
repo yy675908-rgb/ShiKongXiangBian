@@ -16,9 +16,13 @@ class EventChangeTest {
     @Test fun incomingPeerControlledByExistingAuthorityCannotBecomeCooperation() {
         val s = snapshot(listOf("流时" to "戊戌"))
         val r = read(s)
-        val path = r.allPaths().first { it.channel == EvidenceChannel.STEM && it.targetNatal && it.sourceGan == "戊" && it.targetGan == "乙" && it.relation == EnergyRelation.CONTROLLED_BY }
+        val path = r.allPaths().first { it.channel == EvidenceChannel.BRANCH && it.targetNatal && it.sourceGan == "戊" && it.targetGan == "乙" && it.relation == EnergyRelation.CONTROLLED_BY }
         val isolated = r.copy(layers = r.layers.map { it.copy(paths = it.paths.filter { p -> p.id == path.id }) })
-        val result = MultiEventPredictionEngine.predict(s, isolated)
+        assertTrue(MultiEventPredictionEngine.predict(s, isolated).events.isEmpty())
+        // Even an explicit direct stem route would not establish that the peer is the person.
+        val explicit = path.copy(id = "explicit-peer-authority", channel = EvidenceChannel.STEM, hiddenTarget = false)
+        val direct = r.copy(layers = listOf(r.layers.last().copy(paths = listOf(explicit))))
+        val result = MultiEventPredictionEngine.predict(s, direct)
         assertFalse(result.events.any { it.pattern == EventPattern.COORDINATE || it.pattern == EventPattern.ALLOCATION_FRICTION })
         val event = result.events.single { it.pattern == EventPattern.ACTION_RESTRICTED }
         assertTrue(event.outcome.contains("需要配合任务要求"))
