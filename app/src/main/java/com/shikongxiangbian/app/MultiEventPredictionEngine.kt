@@ -209,7 +209,8 @@ object MultiEventPredictionEngine {
                 listOf("采购、付款，或借用/归还、调配物品", "就资源使用条件、费用或归属作一次处理"),
                 "主体已有采购、消费或资源调配需求", "财气入场不等同得财或破财；没有实际取用需求时不硬取交易")
         }
-        if ((sourceGod in output && targetGod in authority && p.relation == EnergyRelation.CONTROLS) || (tying && gods.any { it in authority } && gods.any { it in output || it in peers })) {
+        val negotiates = sourceGod in output && targetGod in authority && p.relation == EnergyRelation.CONTROLS
+        if (negotiates) {
             emit(EventDomain.COMMUNICATION, EventPattern.NEGOTIATE, EventDirection.CHANGE, "对规则或安排进行解释、交涉",
                 listOf("向对接方解释情况、提出异议或反馈问题", "围绕使用条件、任务要求或处理方式协商调整"),
                 "现实中存在需要对接的人或规则，输出端与规则端确有同一作用路径", "没有对接事项时，不直接判争吵；协商也不等于冲突")
@@ -232,7 +233,7 @@ object MultiEventPredictionEngine {
                 listOf("接到任务、检查或对接要求，按具体条件落实", "核对责任、流程或交付标准，并处理相关事项"),
                 "约束有现实任务或规则载体，能够作用主体；是有序推进还是额外负担须看主体承接与其他通路",
                 "官杀自身受制或缺乏载体时，不能断任务必然落实；入场也不能直接定为催办、处罚或压力增大")
-        } else if (targetGod in authority && targetStrained) {
+        } else if (targetGod in authority && targetStrained && !negotiates) {
             emit(EventDomain.TASKS, EventPattern.RECHECK_RULES, EventDirection.CHANGE, "既有规则或任务需要重新协调",
                 listOf("原要求、审批或执行条件反复，需核对后重排", "提出调整要求，重新明确谁负责、怎样处理"),
                 "原本存在任务/规则，受扰的是其执行端", "规则端被制不等同主体被处罚，也不能自动断坏事")

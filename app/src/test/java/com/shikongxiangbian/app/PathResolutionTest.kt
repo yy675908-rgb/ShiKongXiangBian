@@ -60,7 +60,9 @@ class PathResolutionTest {
         val path = r.allPaths().single { it.sourceGan == "丙" && it.targetGan == "庚" && it.channel == EvidenceChannel.STEM }
         assertEquals(EnergyRelation.CONTROLS, path.relation)
         assertTrue(path.techniques.isEmpty())
-        assertTrue(MultiEventPredictionEngine.predict(s, r).events.any { it.pattern == EventPattern.NEGOTIATE && path.id in it.pathIds })
+        val events = MultiEventPredictionEngine.predict(s, r).events
+        assertTrue(events.any { it.pattern == EventPattern.NEGOTIATE && path.id in it.pathIds })
+        assertFalse(events.any { it.pattern == EventPattern.RECHECK_RULES && path.id in it.pathIds })
     }
 
     @Test fun plainOutputGeneratingWealthIsKeptAsItsOwnEventRoute() {

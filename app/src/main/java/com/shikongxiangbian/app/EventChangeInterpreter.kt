@@ -63,6 +63,10 @@ object EventChangeInterpreter {
         val target = role(reading.dayMaster, path.targetLabel, path.targetGan, path.channel)
         if ("日主自合" in path.techniques && pattern == EventPattern.CONFIRM_TERMS)
             return "自己的行动与任务要求相联系，取象为确认职责或约定。"
+        if (path.targetLabel == "日柱" && path.channel == EvidenceChannel.STEM && pattern == EventPattern.RESOURCE_TRANSFER)
+            return "钱物进入自己的使用和安排，取象为调配或处置。"
+        if (pattern == EventPattern.NEGOTIATE)
+            return "通过说明、反馈或交付成果，协调已有的任务要求。"
         val sentence = when (path.relation) {
             EnergyRelation.SAME -> "$source 与已有的$target 相联系"
             EnergyRelation.GENERATES -> "$source 为已有的$target 提供支持"

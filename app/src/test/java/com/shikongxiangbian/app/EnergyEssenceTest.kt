@@ -60,7 +60,7 @@ class EnergyEssenceTest {
         val r = read(s)
         assertFalse(r.natalEnergy.getValue("木").restricted)
         assertTrue(r.natal.carriers.getValue("年柱:乙:STEM").restricted)
-        val event = MultiEventPredictionEngine.predict(s, r).events.single { it.pattern == EventPattern.RECEIVE_SUPPORT }
+        val event = MultiEventPredictionEngine.predict(s, r).events.single { it.pattern == EventPattern.RECEIVE_SUPPORT && "年柱:乙:STEM" in it.endpointKeys }
         assertTrue(event.natalContext.any { it.startsWith("年柱乙卯的乙木") && it.contains("另与旁干牵合") })
     }
 
@@ -79,3 +79,4 @@ class EnergyEssenceTest {
         assertTrue(event.invalidIf.contains("不能直接定为催办、处罚或压力增大"))
     }
 }
+

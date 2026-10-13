@@ -16,7 +16,7 @@ class EventChangeTest {
     @Test fun incomingPeerControlledByExistingAuthorityCannotBecomeCooperation() {
         val s = snapshot(listOf("流时" to "戊戌"))
         val r = read(s)
-        val path = r.allPaths().first { it.sourceGan == "戊" && it.targetGan == "乙" && it.relation == EnergyRelation.CONTROLLED_BY }
+        val path = r.allPaths().first { it.channel == EvidenceChannel.STEM && it.targetNatal && it.sourceGan == "戊" && it.targetGan == "乙" && it.relation == EnergyRelation.CONTROLLED_BY }
         val isolated = r.copy(layers = r.layers.map { it.copy(paths = it.paths.filter { p -> p.id == path.id }) })
         val result = MultiEventPredictionEngine.predict(s, isolated)
         assertFalse(result.events.any { it.pattern == EventPattern.COORDINATE || it.pattern == EventPattern.ALLOCATION_FRICTION })

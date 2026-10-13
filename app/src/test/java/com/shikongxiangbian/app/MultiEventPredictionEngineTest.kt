@@ -127,7 +127,7 @@ class MultiEventPredictionEngineTest {
     }
 
     @Test fun opposingSupportRoutesAreExplicitAlternativesInsteadOfTwoHighConfidenceResults() {
-        val s = snapshot(listOf("流月" to "甲寅", "流日" to "甲寅", "流时" to "庚申"))
+        val s = snapshot(listOf("流月" to "壬子", "流日" to "壬子", "流时" to "庚申"))
         val result = MultiEventPredictionEngine.predict(s, read(s))
         val alternatives = result.events.filter { it.domain == EventDomain.INFORMATION && it.conflictsWith.isNotEmpty() }
         assertTrue(alternatives.size >= 2)
