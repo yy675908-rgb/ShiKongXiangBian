@@ -40,12 +40,14 @@ class AnalysisOutputFormatterTest {
     @Test fun conciseFoundationRetainsDifferentChannelsAtTheSameNatalStem() {
         val s = snapshot(listOf("戊戌", "壬子", "甲寅", "乙卯"), listOf("流日" to "甲辰"))
         val r = read(s)
-        val event = MultiEventPredictionEngine.predict(s, r).events.single { it.pattern == EventPattern.RESOURCE_DELAY }
-        val foundation = AnalysisOutputFormatter.foundation(event, r)
+        val events = MultiEventPredictionEngine.predict(s, r).events.filter { it.domain == EventDomain.RESOURCES }
+        assertTrue(events.any { it.pattern == EventPattern.RESOURCE_TRANSFER })
+        val foundation = events.joinToString("；") { AnalysisOutputFormatter.foundation(it, r) }
         assertTrue(foundation.contains("年柱戊（干"))
         assertTrue(foundation.contains("年柱戊（支"))
-        val timeline = AnalysisOutputFormatter.timeline(event, r)
+        val timeline = events.flatMap { AnalysisOutputFormatter.timeline(it, r) }
         assertTrue(timeline.any { it.startsWith("流日甲（同类） 制约 年柱戊（资源）") })
         assertTrue(timeline.any { it.startsWith("流日戊（资源） 与 年柱戊（资源）") && it.contains("支气") })
     }
 }
+

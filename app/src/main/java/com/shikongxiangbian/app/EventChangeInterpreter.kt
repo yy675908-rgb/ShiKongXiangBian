@@ -72,7 +72,11 @@ object EventChangeInterpreter {
             EventPattern.MOVE -> "冲动已有承载，取象偏向原有位置或安排发生调整"
             EventPattern.HIDDEN_ISSUE -> "原有支气承载受${path.techniques.filter { it in setOf("害", "破", "三刑", "自刑") }.sorted().joinToString("、")}，取象偏向使用中暴露问题"
             EventPattern.INTERRUPTED_REST -> "变化触及日常承载；只有实际需要处理前述变化时，才取休息被打断"
-            EventPattern.RESOURCE_TRANSFER -> if (path.relation == EnergyRelation.CONTROLLED_BY) "主体制约资源对象，偏向主动取用或处置，而非资源主动补入" else "资源与主体直接发生牵连，取用方式须结合这条作用方向"
+            EventPattern.RESOURCE_TRANSFER -> when (path.relation) {
+                EnergyRelation.CONTROLLED_BY -> "主体制约资源对象，偏向主动取用或处置，而非资源主动补入"
+                EnergyRelation.CONTROLS -> "同类行动作用于资源对象，偏向取用或处置；普通制财不能直接解释为取用受阻"
+                else -> "资源与主体直接发生牵连，取用方式须结合这条作用方向"
+            }
             EventPattern.RESOURCE_DELAY -> "原有资源端受牵，偏向已有取用事项需要调整；不能把普通生财或制财都当破财"
             EventPattern.RESOURCE_GAIN -> "生源实际到达资源端，取象偏向产出或补给转为可用资源"
             EventPattern.NEGOTIATE -> "表达端作用于要求端，偏向提出方案、反馈或修改既有要求"
@@ -94,6 +98,10 @@ object EventChangeInterpreter {
             state.target.restricted && pattern in setOf(EventPattern.RESOURCE_GAIN, EventPattern.RECEIVE_SUPPORT, EventPattern.OUTPUT) -> "承受端仍受牵，不能直接断已落实"
             else -> ""
         }
-        return "$route；$consequence。" + if (qualification.isBlank()) "" else "$qualification。"
+        val disturbance = path.techniques.filter { it in setOf("冲", "害", "破", "刑", "三刑", "自刑") }.sorted()
+        val branchEffect = if (path.channel == EvidenceChannel.BRANCH && disturbance.isNotEmpty() &&
+            pattern !in setOf(EventPattern.MOVE, EventPattern.HIDDEN_ISSUE, EventPattern.INTERRUPTED_REST))
+            "；对应地支同时受${disturbance.joinToString("、")}" else ""
+        return "$route$branchEffect；$consequence。" + if (qualification.isBlank()) "" else "$qualification。"
     }
 }

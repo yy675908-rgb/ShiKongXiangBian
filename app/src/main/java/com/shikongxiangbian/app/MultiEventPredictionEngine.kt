@@ -203,8 +203,14 @@ object MultiEventPredictionEngine {
                 "既有要求实际作用于来气行动端，双方承载可以落实",
                 "若要求端无承载或另有转接，不能断行动已受限；同类不能自动当作另一个人")
         }
-        val supplied = p.relation == EnergyRelation.GENERATES || p.relation == EnergyRelation.SAME || p.techniques.any { it in setOf("三合", "三会") }
-        if (targetGod in wealth && targetStrained) {
+        // 同气、合局并非新增生源，不能直接派生到账或得到帮助。
+        val supplied = p.relation == EnergyRelation.GENERATES
+        if (targetGod in wealth && sourceGod in peers && p.relation == EnergyRelation.CONTROLS && !disturbance && !tying) {
+            emit(EventDomain.RESOURCES, EventPattern.RESOURCE_TRANSFER, EventDirection.CHANGE, "资源进入取用或处置",
+                listOf("同类行动作用于资源对象，偏向取用、处置或安排其用途"),
+                "存在实际资源对象与使用需求，同类行动端具备作用条件",
+                "普通制财不能直接解释为资源受损、破财或取用反复")
+        } else if (targetGod in wealth && targetStrained) {
             emit(EventDomain.RESOURCES, EventPattern.RESOURCE_DELAY, EventDirection.STRAIN, "钱物取用或结算需要额外处理",
                 listOf("付款、退款、订单或物品取用反复核对条件", "现有物品或资源使用受限，需要替换或重新安排"),
                 "已有钱物或资源事项，受影响的财气端点实际参与其中", "没有实际交易/取用事项时，不能直接判支出、丢失或破财")

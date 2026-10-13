@@ -52,6 +52,17 @@ class EventChangeTest {
         assertEquals(event.outcome, AnalysisOutputFormatter.event(event, r).outcome)
     }
 
+
+    @Test fun sameResourceDoesNotInventAnIncomingPayment() {
+        val s = snapshot(listOf("流日" to "壬申"))
+        val r = read(s)
+        val samePaths = r.allPaths().filter { it.sourceElement == "水" && it.targetElement == "水" }
+        assertTrue(samePaths.isNotEmpty())
+        val ids = samePaths.map { it.id }.toSet()
+        val isolated = r.copy(layers = r.layers.map { it.copy(paths = it.paths.filter { p -> p.id in ids }) })
+        assertFalse(MultiEventPredictionEngine.predict(s, isolated).events.any { it.pattern == EventPattern.RESOURCE_GAIN })
+    }
+
     @Test fun differentDailyStructuresChangeTheConclusionsNotJustStemNames() {
         val stems = listOf("甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸")
         val branches = listOf("子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥")

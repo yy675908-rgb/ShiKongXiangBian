@@ -50,7 +50,7 @@ object AnalysisOutputFormatter {
             "流年" -> "年度背景"
             else -> "大运背景"
         }
-        return EventBrief(outcome, path?.let { shortBasis(it, reading.dayMaster) } ?: event.keyBasis,
+        return EventBrief(AnalysisLanguage.text(outcome), path?.let { shortBasis(it, reading.dayMaster) } ?: event.keyBasis,
             listOf(scene, hold, if (event.configurationLimits.isEmpty()) "" else "同一承受端的补给与制约需比较").filter { it.isNotBlank() }.joinToString("；"), window)
     }
 
