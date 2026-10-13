@@ -21,7 +21,7 @@ class EventChangeTest {
         val result = MultiEventPredictionEngine.predict(s, isolated)
         assertFalse(result.events.any { it.pattern == EventPattern.COORDINATE || it.pattern == EventPattern.ALLOCATION_FRICTION })
         val event = result.events.single { it.pattern == EventPattern.ACTION_RESTRICTED }
-        assertTrue(event.outcome.contains("需要适应已有的任务要求"))
+        assertTrue(event.outcome.contains("需要配合任务要求"))
         assertEquals(EventPriority.WATCH, event.priority)
         assertFalse(event.direction == EventDirection.SUPPORT)
     }

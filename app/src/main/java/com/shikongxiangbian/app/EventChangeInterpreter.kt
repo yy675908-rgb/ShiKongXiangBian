@@ -46,13 +46,13 @@ object EventChangeInterpreter {
     }
 
     private fun role(dayMaster: String, label: String, gan: String, channel: EvidenceChannel): String {
-        if (label == "日柱" && channel == EvidenceChannel.STEM) return "自己的行动"
+        if (label == "日柱" && channel == EvidenceChannel.STEM) return "手头事项"
         return when (GanZhiEngine.tenGod(dayMaster, gan)) {
             "比肩", "劫财" -> "投入的精力"
             "食神", "伤官" -> "表达和交付"
-            "正财", "偏财" -> "钱物的使用"
+            "正财", "偏财" -> "钱物安排"
             "正官", "七杀" -> "任务要求"
-            "正印", "偏印" -> "资料和帮助"
+            "正印", "偏印" -> "资料协助"
             else -> "相关事项"
         }
     }
@@ -62,24 +62,25 @@ object EventChangeInterpreter {
         val source = role(reading.dayMaster, path.sourceLabel, path.sourceGan, path.channel)
         val target = role(reading.dayMaster, path.targetLabel, path.targetGan, path.channel)
         if ("日主自合" in path.techniques && pattern == EventPattern.CONFIRM_TERMS)
-            return "自己的行动与任务要求相联系，取象为确认职责或约定。"
-        if (path.targetLabel == "日柱" && path.channel == EvidenceChannel.STEM && pattern == EventPattern.RESOURCE_TRANSFER)
-            return "钱物进入自己的使用和安排，取象为调配或处置。"
+            return "明确任务中的职责或执行约定。"
+        if (path.targetLabel == "日柱" && path.channel == EvidenceChannel.STEM) {
+            when (pattern) {
+                EventPattern.RESOURCE_TRANSFER -> return "安排已有钱物的使用、分配或处置。"
+                EventPattern.OUTPUT -> return "把已有想法或内容推进为表达、制作或交付。"
+                EventPattern.RECEIVE_SUPPORT -> return "资料或协助支持手头事项的推进。"
+                EventPattern.ADDED_DEMAND -> return "手头事项需要按任务要求推进。"
+                else -> Unit
+            }
+        }
         if (pattern == EventPattern.NEGOTIATE)
-            return "通过说明、反馈或交付成果，协调已有的任务要求。"
-        val sentence = when (path.relation) {
-            EnergyRelation.SAME -> "$source 与已有的$target 相联系"
-            EnergyRelation.GENERATES -> "$source 为已有的$target 提供支持"
-            EnergyRelation.GENERATED_BY -> "需要调用已有的$target，支持$source"
-            EnergyRelation.CONTROLS -> "$source 影响已有的$target，后者需要作出调整"
-            EnergyRelation.CONTROLLED_BY -> "$source 需要适应已有的$target"
-            EnergyRelation.UNKNOWN -> "这条关系的作用方向尚未确定"
-        }
-        val state = reading.energyOf(path)
-        return when {
-            !EnergyEssenceInterpreter.process(path, reading).originReady -> "$sentence；条件尚未齐备。"
-            state.challenges.isNotEmpty() -> "$sentence；另有影响，结果未定。"
-            else -> "$sentence。"
-        }
+            return "通过说明、反馈或交付成果，协调已有任务要求。"
+        return when (path.relation) {
+            EnergyRelation.SAME -> "$source 与 $target 相互关联。"
+            EnergyRelation.GENERATES -> "$source 有助于 $target。"
+            EnergyRelation.GENERATED_BY -> "$source 需要 $target 的支持。"
+            EnergyRelation.CONTROLS -> "$target 需要配合 $source 作出调整。"
+            EnergyRelation.CONTROLLED_BY -> "$source 需要配合 $target 作出调整。"
+            EnergyRelation.UNKNOWN -> "这条关系的作用方向尚未确定。"
+        }.replace(" ", "")
     }
 }
