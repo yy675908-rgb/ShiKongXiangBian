@@ -564,13 +564,13 @@ private fun V6EventCard(number: Int, event: EventPrediction, reading: ReadingV5,
             V6AnalysisText("$number. ${AnalysisOutputFormatter.title(event)}", fontWeight = FontWeight.Bold, color = GREEN_V6)
             V6AnalysisText("${event.priority.title} · ${brief.window}", fontSize = 12.sp, color = Color.Gray)
             V6AnalysisText(brief.outcome, lineHeight = 21.sp)
-            if (event.currentChange.isNotBlank()) V6AnalysisText("本次变化：${event.currentChange}", fontSize = 13.sp, lineHeight = 20.sp)
-            V6AnalysisText("依据：${brief.basis}", fontSize = 13.sp, lineHeight = 20.sp, color = GREEN_V6)
-            V6AnalysisText("前提：${brief.condition}", fontSize = 12.sp, lineHeight = 19.sp)
             val alternatives = allEvents.filter { it.id in event.conflictsWith }
             if (alternatives.isNotEmpty()) V6AnalysisText("其他条件下：${alternatives.joinToString("、") { AnalysisOutputFormatter.title(it) }}", fontSize = 12.sp, color = GREEN_V6)
-            TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) { V6AnalysisText(if (expanded) "收起" else "看推导与不成立条件") }
+            TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) { V6AnalysisText(if (expanded) "收起" else "查看依据") }
             if (expanded) {
+                if (event.currentChange.isNotBlank()) V6Sub("本次变化", event.currentChange)
+                V6Sub("依据", brief.basis)
+                V6Sub("成立条件", brief.condition)
                 V6Sub("原局落点", foundation)
                 V6Sub("逐层作用", timeline)
                 if (event.configurationContext.isNotEmpty()) V6Sub("组合承接", event.configurationContext.joinToString("\n"))

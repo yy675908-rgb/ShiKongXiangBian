@@ -12,8 +12,8 @@ android {
         applicationId = "com.shikongxiangbian.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "0.14.0"
+        versionCode = 18
+        versionName = "0.15.0"
         manifestPlaceholders["appLabel"] = "时空象变"
     }
 
@@ -65,3 +65,15 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
 
+
+// JVM replay lets maintainers inspect a chart locally without sending private fixtures to CI.
+tasks.register<Zip>("analysisReplayBundle") {
+    dependsOn("compileDebugUnitTestKotlin")
+    archiveFileName.set("analysis-replay.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("analysis-replay"))
+    from(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) { into("classes") }
+    from(layout.buildDirectory.dir("tmp/kotlin-classes/debugUnitTest")) { into("classes") }
+    from(configurations.named("debugUnitTestRuntimeClasspath").map { config ->
+        config.files.filter { it.extension == "jar" && (it.name.startsWith("kotlin-stdlib") || it.name.startsWith("lunar-")) }
+    }) { into("lib") }
+}

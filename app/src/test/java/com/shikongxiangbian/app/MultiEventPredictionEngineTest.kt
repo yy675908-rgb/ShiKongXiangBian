@@ -18,7 +18,7 @@ class MultiEventPredictionEngineTest {
         val r = read(s)
         val result = MultiEventPredictionEngine.predict(s, r)
         assertTrue(result.events.map { it.domain }.distinct().size >= 3)
-        assertTrue(result.events.any { it.pattern == EventPattern.MOVE })
+        assertFalse(result.events.any { it.pattern in setOf(EventPattern.MOVE, EventPattern.INTERRUPTED_REST, EventPattern.HIDDEN_ISSUE) })
         assertTrue(result.events.any { it.pattern == EventPattern.RESOURCE_TRANSFER })
         assertEquals(result, MultiEventPredictionEngine.predict(s, r.copy(focalLayer = "大运", tenGod = "任意摘要")))
     }
@@ -40,14 +40,17 @@ class MultiEventPredictionEngineTest {
         }
     }
 
-    @Test fun duplicatePatternsConsolidateWithoutDiscardingEvidence() {
+    @Test fun evidenceConsolidatesOnlyForTheSameNatalRecipient() {
         val s = snapshot()
         val r = read(s)
         val result = MultiEventPredictionEngine.predict(s, r)
-        assertEquals(result.events.size, result.events.map { it.domain to it.pattern }.distinct().size)
-        val move = result.events.single { it.pattern == EventPattern.MOVE }
-        assertTrue(move.pathIds.size > 1)
-        assertTrue(move.development.any { it.contains("流日庚申") })
+        val byId = r.allPaths().associateBy { it.id }
+        assertTrue(result.events.isNotEmpty())
+        result.events.forEach { event ->
+            val paths = event.pathIds.map { byId.getValue(it) }
+            assertEquals(1, paths.map { it.targetLabel to it.targetGan }.distinct().size)
+            assertTrue(paths.all { it.targetNatal && it.channel == EvidenceChannel.STEM && !it.hiddenTarget })
+        }
         assertEquals(result.events.size, result.events.map { it.id }.distinct().size)
     }
 
@@ -93,18 +96,11 @@ class MultiEventPredictionEngineTest {
         }
     }
 
-    @Test fun connectionsRequireSharedPathAndRemainConditional() {
+    @Test fun sharedEvidenceCannotInventAnEventSequence() {
         val s = snapshot()
         val result = MultiEventPredictionEngine.predict(s, read(s))
-        assertTrue(result.connections.isNotEmpty())
-        val byId = result.events.associateBy { it.id }
-        result.connections.forEach { connection ->
-            val from = byId.getValue(connection.fromId)
-            val to = byId.getValue(connection.toId)
-            assertTrue(from.pathIds.intersect(to.pathIds).isNotEmpty())
-            assertTrue(connection.condition.contains("只有前项实际发生"))
-            assertFalse(result.connections.any { it.fromId == connection.toId && it.toId == connection.fromId })
-        }
+        assertTrue(result.events.isNotEmpty())
+        assertTrue(result.connections.isEmpty())
     }
 
     @Test fun feedbackDoesNotTurnBroadDomainOverlapIntoConcreteHits() {
@@ -154,3 +150,4 @@ class MultiEventPredictionEngineTest {
         assertTrue(result.events.none { it.priority == EventPriority.FOCUS })
     }
 }
+

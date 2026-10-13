@@ -112,13 +112,10 @@ class PathResolutionTest {
         assertTrue(event.priorityReason.contains("较晚层另有待检依据"))
     }
 
-    @Test fun differentCarriersInOnePillarAreNotAutomaticallyContradictory() {
+    @Test fun hiddenWealthAtTheSamePillarCannotInventADelayOpposingExposedGain() {
         val s = snapshot(listOf("丙午", "壬子", "甲寅", "戊丑"), listOf("流日" to "丙辰", "流时" to "丁未"))
         val result = MultiEventPredictionEngine.predict(s, read(s))
-        val gain = result.events.single { it.pattern == EventPattern.RESOURCE_GAIN }
-        val delay = result.events.single { it.pattern == EventPattern.RESOURCE_DELAY }
-        assertTrue(gain.natalAnchors.intersect(delay.natalAnchors).isNotEmpty())
-        assertTrue(gain.endpointKeys.intersect(delay.endpointKeys).isEmpty())
-        assertFalse(gain.conflictsWith.contains(delay.id))
+        assertTrue(result.events.any { it.pattern == EventPattern.RESOURCE_GAIN })
+        assertFalse(result.events.any { it.pattern == EventPattern.RESOURCE_DELAY })
     }
 }

@@ -541,7 +541,7 @@ object SequentialAnalysisEngine {
                 state.target.available.toString(), state.target.restricted.toString(), state.challenges.joinToString()).joinToString(":")
         }.distinct().sorted().joinToString("|")
         val shapeHash = java.security.MessageDigest.getInstance("SHA-256").digest(eventShape.toByteArray(Charsets.UTF_8)).take(8).joinToString("") { "%02x".format(it) }
-        val signature = listOf("seq6", natalNodes.joinToString("") { it.gan + it.zhi }, core.issue.name, core.focusElement, field.currentMonth, key?.sourceElement ?: "无", key?.changeRole?.name ?: "无", key?.targetLabel ?: "无", tenGod, key?.relationKind?.name ?: "无", finalSource?.available.toString(), finalSource?.restricted.toString(), shapeHash).joinToString("-")
+        val signature = listOf("seq7", natalNodes.joinToString("") { it.gan + it.zhi }, core.issue.name, core.focusElement, field.currentMonth, key?.sourceElement ?: "无", key?.changeRole?.name ?: "无", key?.targetLabel ?: "无", tenGod, key?.relationKind?.name ?: "无", finalSource?.available.toString(), finalSource?.restricted.toString(), shapeHash).joinToString("-")
         val image = "原局${core.focusElement}承接轴上，${key?.let { "${it.layer}带来${roleName(it.changeRole)}" } ?: "尚无外来变化"}；${climate(field)}"
         val judgment = linkedMapOf("事情类型" to (key?.let { roleName(it.changeRole) } ?: "原局观察"), "领域" to tenGodDomain(tenGod))
         return ReadingV5(natal, layers, qi, image, bodyUse, tenGod, tenGodDomain(tenGod), judgment, signature,

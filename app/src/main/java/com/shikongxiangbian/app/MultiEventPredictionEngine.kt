@@ -61,7 +61,8 @@ object MultiEventPredictionEngine {
         fun ancestry(p: ImpactPath): List<ImpactPath> = ancestryCache.getOrPut(p.id) {
             (p.inheritedPathIds.flatMap { id -> byId[id]?.let { ancestry(it) } ?: emptyList() } + p).distinctBy { it.id }
         }
-        val grouped = seeds.groupBy { it.domain.name + ":" + it.pattern.name }
+        // Different natal recipients are different routes, even when their broad event label matches.
+        val grouped = seeds.groupBy { "${it.domain.name}:${it.pattern.name}:${it.path.targetLabel}:${it.path.targetGan}" }
         val events = grouped.map { (key, members) ->
             val evidencePaths = members.map { it.path }.distinctBy { it.id }
             val routes = evidencePaths.flatMap { ancestry(it) }.distinctBy { it.id }.sortedBy { it.order }
@@ -95,7 +96,7 @@ object MultiEventPredictionEngine {
                 ?: usablePaths.maxByOrNull { it.order } ?: evidencePaths.maxBy { it.order }
             val configurationLimits = EnergyConfigurationInterpreter.counterRoutes(latest, reading.field)
             val configurationContext = EnergyConfigurationInterpreter.context(latest, reading.field, snapshot.dayMaster)
-            val ambiguousPeer = members.first().pattern in setOf(EventPattern.COORDINATE, EventPattern.ALLOCATION_FRICTION)
+            val ambiguousPeer = members.first().pattern in setOf(EventPattern.COORDINATE, EventPattern.ALLOCATION_FRICTION, EventPattern.ACTION_RESTRICTED)
             val priority = when {
                 ambiguousPeer -> EventPriority.WATCH
                 aligned && possible && configurationLimits.isEmpty() -> EventPriority.FOCUS
@@ -159,42 +160,26 @@ object MultiEventPredictionEngine {
             if (opponents.isEmpty()) e else e.copy(priority = if (e.priority == EventPriority.FOCUS) EventPriority.POSSIBLE else e.priority,
                 priorityReason = e.priorityReason + " 同一承受点另有相反通路，需按各自条件区分。", conflictsWith = opponents.map { it.id }.toSet())
         }.sortedWith(compareBy<EventPrediction> { it.priority.ordinal }.thenByDescending { layerOrder(it.latestLayer) }.thenBy { it.domain.ordinal }.thenBy { it.id })
-        return MultiEventReading(contrasted, connect(contrasted))
+        // Shared symbolic evidence does not establish a real-world causal sequence.
+        return MultiEventReading(contrasted, emptyList())
     }
 
     private fun derive(dayMaster: String, p: ImpactPath, reading: ReadingV5): List<Seed> = buildList {
+        // A branch contact describes roots/conditions, not a physical incident.
+        // Inherited natal anchors do not identify a concrete recipient of an indirect contact.
+        // Keep those paths in the layer analysis; only direct, exposed natal routes can seed events.
+        if (p.channel != EvidenceChannel.STEM || !p.targetNatal || p.hiddenTarget) return@buildList
         val sourceGod = GanZhiEngine.tenGod(dayMaster, p.sourceGan)
         val targetGod = GanZhiEngine.tenGod(dayMaster, p.targetGan)
         val gods = setOf(sourceGod, targetGod)
         val source = reading.energyOf(p).source
-        val target = reading.energyOf(p).target
         val disturbance = p.techniques.any { it in disrupting }
         val ownCombination = "日主自合" in p.techniques
         val tying = "天干合" in p.techniques && !ownCombination
         val linking = "六合" in p.techniques || ownCombination
-        val nearSelf = p.natalAnchors.any { it in setOf("日柱", "时柱") }
-        val visibleEndpoint = !p.hiddenTarget || target.expressed
         fun emit(domain: EventDomain, pattern: EventPattern, direction: EventDirection, title: String, alternatives: List<String>, condition: String, invalid: String) {
             add(Seed(domain, pattern, direction, title, alternatives, condition, invalid, p, gods))
         }
-        // A branch's material carrier and its several human endpoints can manifest in parallel.
-        if (p.channel == EvidenceChannel.BRANCH && nearSelf && "冲" in p.techniques) {
-            emit(EventDomain.ARRANGEMENT, EventPattern.MOVE, EventDirection.CHANGE, "位置或安排临时改变",
-                listOf("临时更换休息/工作位置，挪动常用物品", "调整原定路线、时间或使用安排"),
-                "已有使用中的空间、物品或既定安排，且近端层触及这条支气承载", "若没有需使用或调整的安排，不能具体化为搬动、换房或出行")
-        }
-        if (p.channel == EvidenceChannel.BRANCH && nearSelf && p.techniques.any { it in setOf("害", "破", "三刑", "自刑") }) {
-            emit(EventDomain.ENVIRONMENT, EventPattern.HIDDEN_ISSUE, EventDirection.STRAIN, "空间或用品出现需要处理的细节",
-                listOf("使用中发现先前未留意的异常、故障或杂物", "反复检查、清理或更换受影响用品"),
-                "本人正在使用相关空间或用品，且问题确有显现条件", "未出现可观察问题时，这条只是隐性牵扯候选；不能锁定异常物的种类")
-        }
-        if (p.channel == EvidenceChannel.BRANCH && nearSelf && disturbance) {
-            emit(EventDomain.REST, EventPattern.INTERRUPTED_REST, EventDirection.STRAIN, "休息或日常节奏被打断",
-                listOf("因周围事项需要反复处理、确认，原定休息推迟", "中途起身、重新安排休息或日常流程"),
-                "这条近端承载变化确实落入本人休息或日常过程", "若只是工作或外部事项受扰，不能直接断失眠，更不能确定持续时长")
-        }
-        // Hidden endpoints are retained in the analysis, but do not mechanically expand every ten-god into an event.
-        if (!visibleEndpoint) return@buildList
         val targetStrained = disturbance || tying || p.relation == EnergyRelation.CONTROLS
         // A reverse constraint acts on the incoming peer, not on the existing authority.
         if (sourceGod in peers && targetGod in authority && p.relation == EnergyRelation.CONTROLLED_BY) {
@@ -271,20 +256,6 @@ object MultiEventPredictionEngine {
                 "现实中确有同辈或共同事项参与，不能只把日主同类根当作另一个人", "没有参与者时，应留在主体行动层，不取人际竞争或争执")
         }
     }
-
-    private fun connect(events: List<EventPrediction>): List<EventConnection> = buildList {
-        events.forEach { from -> events.forEach inner@ { to ->
-            if (from.id == to.id || from.pathIds.intersect(to.pathIds).isEmpty()) return@inner
-            val continuation = when {
-                from.domain == EventDomain.ENVIRONMENT && to.domain == EventDomain.COMMUNICATION -> "用品/空间问题 → 说明、反馈或交涉"
-                from.domain == EventDomain.ENVIRONMENT && to.domain == EventDomain.RESOURCES -> "用品/空间处理 → 替换、结算或资源调配"
-                from.domain in setOf(EventDomain.ENVIRONMENT, EventDomain.ARRANGEMENT) && to.domain == EventDomain.REST -> "处理/调整安排 → 原定休息被挤占"
-                from.domain == EventDomain.INFORMATION && from.direction == EventDirection.SUPPORT && to.domain == EventDomain.COMMUNICATION && to.direction == EventDirection.SUPPORT -> "信息/支持补入 → 表达或行动落实"
-                else -> null
-            }
-            if (continuation != null) add(EventConnection(from.id, to.id, continuation, "两项共享作用依据；只有前项实际发生且需要后续处理，才可能接续，不能推定两项都发生。"))
-        } }
-    }.distinctBy { it.fromId to it.toId }
 
     private fun relationMeaning(relation: EnergyRelation): String = when (relation) {
         EnergyRelation.SAME -> "同气加入，承载可叠加，兑现仍需现实载体"

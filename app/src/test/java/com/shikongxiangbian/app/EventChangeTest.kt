@@ -21,7 +21,8 @@ class EventChangeTest {
         val result = MultiEventPredictionEngine.predict(s, isolated)
         assertFalse(result.events.any { it.pattern == EventPattern.COORDINATE || it.pattern == EventPattern.ALLOCATION_FRICTION })
         val event = result.events.single { it.pattern == EventPattern.ACTION_RESTRICTED }
-        assertTrue(event.outcome.contains("既有要求约束"))
+        assertTrue(event.outcome.contains("需要适应已有的任务要求"))
+        assertEquals(EventPriority.WATCH, event.priority)
         assertFalse(event.direction == EventDirection.SUPPORT)
     }
 
@@ -75,7 +76,7 @@ class EventChangeTest {
         val semanticSets = result.map { (_, reading) -> reading.events.filter { it.priority != EventPriority.WATCH }.map { it.pattern }.toSet() }.toSet()
         assertTrue("Sixty day structures must not produce one fixed daily event menu", semanticSets.size >= 6)
         result.forEach { (_, events) ->
-            assertTrue(events.events.filter { it.pattern in setOf(EventPattern.COORDINATE, EventPattern.ALLOCATION_FRICTION) }.all { it.priority == EventPriority.WATCH })
+            assertTrue(events.events.filter { it.pattern in setOf(EventPattern.COORDINATE, EventPattern.ALLOCATION_FRICTION, EventPattern.ACTION_RESTRICTED) }.all { it.priority == EventPriority.WATCH })
         }
         // CI test report retains a reviewable cross-date sample; it contains only synthetic fixtures.
         result.take(12).forEach { (gz, result) ->
