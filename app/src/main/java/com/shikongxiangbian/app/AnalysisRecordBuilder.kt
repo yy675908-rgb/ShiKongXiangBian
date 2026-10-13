@@ -59,6 +59,8 @@ object AnalysisRecordBuilder {
             appendLine("【逐项可能应事】")
             grounded.events.forEachIndexed { index, event ->
                 appendLine("${index + 1}. ${event.title}｜${event.priority.title}｜${event.timeWindow}")
+                appendLine("本次判断：${event.outcome}")
+                appendLine("本次变化：${event.currentChange}")
                 appendLine("关键依据：${event.keyBasis}")
                 appendLine("可能：${event.possibilities.joinToString("；")}")
                 appendLine("条件：${event.condition}")
@@ -89,3 +91,4 @@ object AnalysisRecordBuilder {
         }
     }
 }
+

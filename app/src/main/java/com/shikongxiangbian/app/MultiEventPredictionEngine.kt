@@ -128,7 +128,7 @@ object MultiEventPredictionEngine {
             }.distinct()
             EventPrediction(
                 id = key, domain = members.first().domain, pattern = members.first().pattern, direction = members.first().direction,
-                title = members.first().title, possibilities = members.flatMap { it.possibilities }.distinct(), priority = priority, priorityReason = reason,
+                title = members.first().title, possibilities = evidencePaths.map { EventChangeInterpreter.outcome(members.first().pattern, it, reading) }.distinct(), priority = priority, priorityReason = reason,
                 timeWindow = if (usablePaths.isEmpty()) "${latest.sourceLabel}关系待检，尚未成立有效触发；应期未定" else window(latest.sourceLabel), condition = (members.map { it.condition } + configurationLimits).distinct().joinToString("；"),
                 invalidIf = members.map { it.invalidIf }.distinct().joinToString("；"), evidence = facts,
                 pathIds = evidencePaths.map { it.id }.toSet(), natalAnchors = evidencePaths.flatMap { it.natalAnchors }.toSet(),

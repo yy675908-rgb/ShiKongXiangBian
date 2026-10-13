@@ -11,6 +11,20 @@ class RecordPresentationTest {
         return CompletedForecast(input, snapshot, reading, EnergyGroundedInterpreter.interpret(snapshot, reading))
     }
 
+
+    @Test fun newFullRecordRetainsDerivedOutcomeAndCurrentChangeInsteadOfOldCategoryText() {
+        val original = forecast()
+        val event = original.grounded.events.first().copy(
+            outcome = "原有要求约束当日行动。", currentChange = "当日新增约束关系。",
+            possibilities = listOf("原有要求约束当日行动。"))
+        val f = original.copy(grounded = original.grounded.copy(events = listOf(event)))
+        val c = GroundedCalibrationEngine.calibrate(f.reading.signature, f.grounded, "实际经过", "")
+        val raw = AnalysisRecordBuilder.build(f, "实际经过", c).substringAfter("§ORIGINAL")
+        assertTrue(raw.contains("本次判断：原有要求约束当日行动。"))
+        assertTrue(raw.contains("本次变化：当日新增约束关系。"))
+        assertFalse(raw.contains("约定分工，与同辈共同推进事项。"))
+    }
+
     @Test fun recordKeepsItsExactForecastPillarsIncludingLateZiSetting() {
         val records = (1..2).map { sect ->
             val f = forecast(sect)
@@ -119,3 +133,4 @@ class RecordPresentationTest {
         assertFalse(peers.ready)
     }
 }
+
