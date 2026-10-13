@@ -37,6 +37,12 @@ jobs:
           fi
       - name: Build debug APK
         run: gradle --no-daemon testDebugUnitTest assembleDebug
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShiKongXiangBian-tests
+          path: app/build/test-results/testDebugUnitTest/
       - name: Check signing certificate
         run: keytool -list -v -keystore "$SHIKONG_DEBUG_KEYSTORE" -storepass android -alias androiddebugkey
       - name: Upload APK
@@ -44,3 +50,4 @@ jobs:
         with:
           name: ShiKongXiangBian-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+

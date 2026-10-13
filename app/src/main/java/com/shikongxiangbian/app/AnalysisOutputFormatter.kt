@@ -21,28 +21,14 @@ object AnalysisOutputFormatter {
         EventPattern.RECHECK_DOCUMENTS -> "材料补核"
         EventPattern.COORDINATE -> "同辈协作"
         EventPattern.ALLOCATION_FRICTION -> "分配反复"
+        EventPattern.ACTION_RESTRICTED -> "行动受约束"
     }
 
     fun event(event: EventPrediction, reading: ReadingV5): EventBrief {
         val path = reading.allPaths().firstOrNull { it.id == event.keyPathId }
-        val (outcome, scene) = when (event.pattern) {
-            EventPattern.MOVE -> "更换使用位置、路线或原定安排。" to "有正在使用的空间、物品或既定安排"
-            EventPattern.HIDDEN_ISSUE -> "发现空间或用品异常，需要检查、清理或更换。" to "正在使用相关空间或用品"
-            EventPattern.INTERRUPTED_REST -> "处理事项，休息或日常流程被推迟、打断。" to "作用落入休息或日常流程"
-            EventPattern.RESOURCE_TRANSFER -> "采购、付款、借还或调配物品，确认费用与归属。" to "有实际采购或资源调配需求"
-            EventPattern.RESOURCE_DELAY -> "付款、退款或取用反复，需核对条件或替换用品。" to "已有交易或取用事项"
-            EventPattern.RESOURCE_GAIN -> "收到款项、物品或可用资源。" to "已有资源来源或交易安排"
-            EventPattern.NEGOTIATE -> "解释情况、提出异议，与对接方协商调整。" to "有需要对接的人或规则"
-            EventPattern.OUTPUT -> "回复、说明、写作或操作形成一次具体输出。" to "有实际表达或交付任务"
-            EventPattern.REWORK -> "等回复、补说明，或修改、重做交付。" to "沟通或交付已经在进行"
-            EventPattern.ADDED_DEMAND -> "接到任务、检查或对接要求，按标准处理。" to "有实际任务或规则事项"
-            EventPattern.CONFIRM_TERMS -> "确认职责、要求或合作条件。" to "有明确任务或合作对接"
-            EventPattern.RECHECK_RULES -> "核对要求、审批或负责人，重排执行。" to "原本已有任务或审批流程"
-            EventPattern.RECEIVE_SUPPORT -> "收到资料、消息或一次实际协助。" to "有资料需求或实际支持来源"
-            EventPattern.RECHECK_DOCUMENTS -> "材料、凭证或消息需补充、再次核对。" to "有材料、凭证或消息确认需求"
-            EventPattern.COORDINATE -> "约定分工，与同辈共同推进事项。" to "确有同辈或共同事项参与"
-            EventPattern.ALLOCATION_FRICTION -> "反复协调分工、使用权或资源归属。" to "确有共同事项及分配需求"
-        }
+        // The UI must use the actual analysis result, not replace it with a fixed category sentence.
+        val outcome = event.outcome.ifBlank { event.possibilities.joinToString("；") }
+        val scene = event.condition
         val hold = if (event.priority != EventPriority.WATCH || path == null) "" else {
             val energy = reading.energyOf(path)
             val process = EnergyEssenceInterpreter.process(path, reading)
@@ -148,6 +134,7 @@ object AnalysisOutputFormatter {
             val brief = event(e, reading)
             appendLine("${index + 1}. ${title(e)}｜${brief.window}")
             appendLine(brief.outcome)
+            if (e.currentChange.isNotBlank()) appendLine("本次变化：${e.currentChange}")
             appendLine("依据：${brief.basis}")
             appendLine("前提：${brief.condition}")
         }
@@ -155,3 +142,4 @@ object AnalysisOutputFormatter {
         if (pending > 0) appendLine("另有 $pending 项尚缺条件，见完整推导。")
     }.trimEnd())
 }
+

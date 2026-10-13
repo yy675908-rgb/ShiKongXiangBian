@@ -12,8 +12,8 @@ android {
         applicationId = "com.shikongxiangbian.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "0.13.2"
+        versionCode = 17
+        versionName = "0.14.0"
         manifestPlaceholders["appLabel"] = "时空象变"
     }
 
@@ -64,3 +64,4 @@ dependencies {
     implementation("cn.6tail:lunar:1.7.7")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
+

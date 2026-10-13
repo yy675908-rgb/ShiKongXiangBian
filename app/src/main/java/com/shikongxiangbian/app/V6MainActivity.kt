@@ -564,6 +564,7 @@ private fun V6EventCard(number: Int, event: EventPrediction, reading: ReadingV5,
             V6AnalysisText("$number. ${AnalysisOutputFormatter.title(event)}", fontWeight = FontWeight.Bold, color = GREEN_V6)
             V6AnalysisText("${event.priority.title} · ${brief.window}", fontSize = 12.sp, color = Color.Gray)
             V6AnalysisText(brief.outcome, lineHeight = 21.sp)
+            if (event.currentChange.isNotBlank()) V6AnalysisText("本次变化：${event.currentChange}", fontSize = 13.sp, lineHeight = 20.sp)
             V6AnalysisText("依据：${brief.basis}", fontSize = 13.sp, lineHeight = 20.sp, color = GREEN_V6)
             V6AnalysisText("前提：${brief.condition}", fontSize = 12.sp, lineHeight = 19.sp)
             val alternatives = allEvents.filter { it.id in event.conflictsWith }
@@ -809,3 +810,4 @@ private fun V6AnalysisText(
     val readable = remember(text) { AnalysisLanguage.text(text) }
     Text(readable, modifier = modifier, fontSize = fontSize, lineHeight = lineHeight, fontWeight = fontWeight, color = color)
 }
+

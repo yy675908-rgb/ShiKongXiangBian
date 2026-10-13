@@ -7,7 +7,7 @@ enum class EventDomain(val title: String) {
 }
 enum class EventPriority(val title: String) { FOCUS("优先关注"), POSSIBLE("次要可能"), WATCH("条件待补") }
 enum class EventDirection { SUPPORT, STRAIN, CHANGE, REPEAT }
-enum class EventPattern { MOVE, HIDDEN_ISSUE, INTERRUPTED_REST, RESOURCE_TRANSFER, RESOURCE_DELAY, RESOURCE_GAIN, NEGOTIATE, OUTPUT, REWORK, ADDED_DEMAND, CONFIRM_TERMS, RECHECK_RULES, RECEIVE_SUPPORT, RECHECK_DOCUMENTS, COORDINATE, ALLOCATION_FRICTION }
+enum class EventPattern { MOVE, HIDDEN_ISSUE, INTERRUPTED_REST, RESOURCE_TRANSFER, RESOURCE_DELAY, RESOURCE_GAIN, NEGOTIATE, OUTPUT, REWORK, ADDED_DEMAND, CONFIRM_TERMS, RECHECK_RULES, RECEIVE_SUPPORT, RECHECK_DOCUMENTS, COORDINATE, ALLOCATION_FRICTION, ACTION_RESTRICTED }
 
 data class EventPrediction(
     val id: String,
@@ -35,7 +35,9 @@ data class EventPrediction(
     val keyPathId: String = "",
     val hasUsableWindow: Boolean = false,
     val configurationContext: List<String> = emptyList(),
-    val configurationLimits: List<String> = emptyList()
+    val configurationLimits: List<String> = emptyList(),
+    val currentChange: String = "",
+    val outcome: String = ""
 )
 
 data class EventConnection(val fromId: String, val toId: String, val description: String, val condition: String)
@@ -85,21 +87,31 @@ object MultiEventPredictionEngine {
                 return clear(p) || (structural(p) && state.source.rooted && !state.source.restricted &&
                     origin.rooted && !origin.restricted && state.challenges.isEmpty())
             }
-            val possible = nearPaths.any { usable(it) }
+            val changedNearPaths = nearPaths.filter { EventChangeInterpreter.hasChange(it, reading) }
+            val possible = changedNearPaths.any { usable(it) }
             // A constrained hour path cannot borrow a clear day path to claim an hour trigger.
-            val usablePaths = evidencePaths.filter { usable(it) }
-            val latest = usablePaths.maxByOrNull { it.order } ?: evidencePaths.maxBy { it.order }
+            val usablePaths = evidencePaths.filter { usable(it) && (it.sourceLabel !in setOf("流日", "流时") || EventChangeInterpreter.hasChange(it, reading)) }
+            val latest = usablePaths.filter { it.sourceLabel in setOf("流日", "流时") }.maxByOrNull { it.order }
+                ?: usablePaths.maxByOrNull { it.order } ?: evidencePaths.maxBy { it.order }
             val configurationLimits = EnergyConfigurationInterpreter.counterRoutes(latest, reading.field)
             val configurationContext = EnergyConfigurationInterpreter.context(latest, reading.field, snapshot.dayMaster)
-            val priority = when { aligned && configurationLimits.isEmpty() -> EventPriority.FOCUS; possible -> EventPriority.POSSIBLE; else -> EventPriority.WATCH }
+            val ambiguousPeer = members.first().pattern in setOf(EventPattern.COORDINATE, EventPattern.ALLOCATION_FRICTION)
+            val priority = when {
+                ambiguousPeer -> EventPriority.WATCH
+                aligned && possible && configurationLimits.isEmpty() -> EventPriority.FOCUS
+                possible -> EventPriority.POSSIBLE
+                else -> EventPriority.WATCH
+            }
             val reason = when (priority) {
                 EventPriority.FOCUS -> "不同层承接同一事项路径，日/时已触及，且至少一条显性承载条件较齐；这是结构排序，不是命中概率。"
                 EventPriority.POSSIBLE -> "已有日/时作用依据，但通路承载、重复承接或现实场景尚未全部确认。"
                 EventPriority.WATCH -> when {
+                    ambiguousPeer -> "同类根气不能证明另有参与者，也未确定协作或分用，不能直接作为人际应事。"
                     nearPaths.isEmpty() -> "只有运/年/月背景，未见本项日/时承接，暂不列为近期重点。"
                     nearPaths.any { reading.energyOf(it).challenges.isNotEmpty() } -> "近端来源又被后层作用，原先通路能否延续待检，不能直接沿用早层结论。"
                     nearPaths.all { reading.energyOf(it).source.restricted } -> "本项近端来源仍受牵制；别处同五行有承载不等于此路径恢复。"
                     nearPaths.all { !EnergyEssenceInterpreter.process(it, reading).originReady } -> "实际施生/施制端的承载未齐；来气有根不能替既有供方完成输出。"
+                    changedNearPaths.isEmpty() -> "日/时仅延续既有关系，未见冲合、承载改变或新接通的组合，不重复列为当日应事。"
                     else -> "近端关系已列，但显性端点或作用承载未齐，暂不列为近期重点。"
                 }
             } + (if (configurationLimits.isNotEmpty()) " 同一承受端另有制约候选，组合效力未定，暂不升为重点。" else "") + if (evidencePaths.any { it.order > latest.order }) " 较晚层另有待检依据，本项窗口按仍可承接的${latest.sourceLabel}，不借用较晚层提高应期精度。" else ""
@@ -136,7 +148,9 @@ object MultiEventPredictionEngine {
                 keyBasis = "${EnergyEssenceInterpreter.process(latest, reading).mechanism}；${latest.techniques.sorted().joinToString("/", postfix = if (latest.techniques.isEmpty()) "" else "，")}${if (!usable(latest)) "本项承载待补" else "结果仍看承接条件"}",
                 energyProcess = routes.map { EnergyEssenceInterpreter.process(it, reading).describe() }.distinct(),
                 keyPathId = latest.id, hasUsableWindow = usablePaths.isNotEmpty(),
-                configurationContext = configurationContext, configurationLimits = configurationLimits
+                configurationContext = configurationContext, configurationLimits = configurationLimits,
+                currentChange = EventChangeInterpreter.change(latest, reading),
+                outcome = EventChangeInterpreter.outcome(members.first().pattern, latest, reading)
             )
         }
         // Opposed readings remain explicit alternatives; don't call both equally certain.
@@ -182,6 +196,13 @@ object MultiEventPredictionEngine {
         // Hidden endpoints are retained in the analysis, but do not mechanically expand every ten-god into an event.
         if (!visibleEndpoint) return@buildList
         val targetStrained = disturbance || tying || p.relation == EnergyRelation.CONTROLS
+        // A reverse constraint acts on the incoming peer, not on the existing authority.
+        if (sourceGod in peers && targetGod in authority && p.relation == EnergyRelation.CONTROLLED_BY) {
+            emit(EventDomain.TASKS, EventPattern.ACTION_RESTRICTED, EventDirection.STRAIN, "行动受到既有要求约束",
+                listOf("来气同类行动受既有要求约束，先处理限制条件"),
+                "既有要求实际作用于来气行动端，双方承载可以落实",
+                "若要求端无承载或另有转接，不能断行动已受限；同类不能自动当作另一个人")
+        }
         val supplied = p.relation == EnergyRelation.GENERATES || p.relation == EnergyRelation.SAME || p.techniques.any { it in setOf("三合", "三会") }
         if (targetGod in wealth && targetStrained) {
             emit(EventDomain.RESOURCES, EventPattern.RESOURCE_DELAY, EventDirection.STRAIN, "钱物取用或结算需要额外处理",
@@ -234,7 +255,9 @@ object MultiEventPredictionEngine {
                 listOf("收到消息/资料、补齐所需材料或确认信息", "得到一次协助，原有事项获得可用支持"),
                 "生我之气具备承载，现实中有信息或支持来源", "来源未兑现、印气受牵制时，只保留为候选")
         }
-        if (sourceGod in peers && (targetGod in peers || tying || linking || disturbance)) {
+        if (p.channel == EvidenceChannel.STEM && p.targetNatal && p.targetLabel != "日柱" &&
+            sourceGod in peers && targetGod in peers && p.relation != EnergyRelation.CONTROLLED_BY &&
+            (p.relation == EnergyRelation.SAME || tying || linking || disturbance)) {
             emit(EventDomain.RELATIONSHIPS, if (targetStrained) EventPattern.ALLOCATION_FRICTION else EventPattern.COORDINATE,
                 if (targetStrained) EventDirection.STRAIN else EventDirection.SUPPORT,
                 if (targetStrained) "同辈或共同事项的分配反复" else "协作或分工得到落实",
@@ -275,3 +298,4 @@ object MultiEventPredictionEngine {
     }
     private fun layerOrder(layer: String): Int = listOf("大运", "流年", "流月", "流日", "流时").indexOf(layer)
 }
+
