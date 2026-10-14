@@ -80,7 +80,7 @@ object CombinedImageInterpreter {
             }
             val active = a.bindings.filter { it.ready }
             val original = a.bindings.map { route(c, it, reading.dayMaster) }.distinct()
-            val limits = a.bindings.filterNot { it.ready }.map { limitation(it) }.distinct()
+            val limits = a.bindings.filterNot { it.ready }.flatMap { limitation(it).split("；") }.filter { it.isNotBlank() }.distinct()
             val counters = a.counterBindings.map { b ->
                 "${stem(b.endpoints.first(), reading.dayMaster)}克${stem(b.endpoints.last(), reading.dayMaster)}"
             }.distinct()
@@ -93,7 +93,7 @@ object CombinedImageInterpreter {
                 c.relations.last() == EnergyRelation.CONTROLS && c.relations.size > 1 ->
                     "前段相生，生起的五行又克后一行；增加生扶也会增加制约，不能只看前段相生。"
                 else -> "这组五行存在相克；克的一方有根气或生扶，尚未据此确定另一方已经受损或被制伏。"
-            } + if (counters.isNotEmpty()) "同时还有${counters.joinToString("；")}；相生与相克并存，不能只取其中一面。" else ""
+            } + if (counters.isNotEmpty()) "同时还有${counters.joinToString("；")}；这些制约也须纳入比较。" else ""
             // A relationship/flow assessment is not passed off as a completed human-event image.
             val image = "尚未形成可支持具体事情的取象。"
             val changed = if (a.changed) "本层改变了这组干支的组成或作用条件。" else "这组干支的组成和作用条件与前层相同。"
