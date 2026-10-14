@@ -25,11 +25,13 @@ object CumulativeEventInterpreter {
                     before == null -> if (ready) "新增" else "待定"
                     wasReady && !ready -> "暂缓"
                     !wasReady && ready -> "条件转好"
+                    event.pattern == EventPattern.COMPOSITION && before != null &&
+                        (before.outcome != event.outcome || before.keyBasis != event.keyBasis) -> "调整"
                     !ready -> "仍待定"
                     before.outcome != event.outcome || before.keyBasis != event.keyBasis || before.priority != event.priority -> "调整"
                     else -> "延续"
                 }
-                CumulativeEventEntry(event, change, ready || wasReady)
+                CumulativeEventEntry(event, change, ready || wasReady || event.pattern == EventPattern.COMPOSITION)
             }
             previous = result.events.associateBy { it.id }
             CumulativeEventStage(layer.layer, layer.ganZhi, entries, result)

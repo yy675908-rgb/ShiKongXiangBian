@@ -32,7 +32,10 @@ data class EnergyConfiguration(
     fun describe(): String = "$direction：$status；$meaning"
 }
 
-data class EnergyFieldReading(val configurations: List<EnergyConfiguration> = emptyList()) {
+data class EnergyFieldReading(
+    val configurations: List<EnergyConfiguration> = emptyList(),
+    val endpoints: List<EnergyEndpoint> = emptyList()
+) {
     // This is a concise display selection, never a filter on analysis or events.
     fun overview(): String = configurations.sortedBy { !it.ready }.take(2).joinToString("；") {
         "${it.direction}，${it.status}"
@@ -70,7 +73,7 @@ object EnergyConfigurationInterpreter {
             EnergyConfiguration(name, route, route.zipWithNext { a, b ->
                 if (generate[a] == b) EnergyRelation.GENERATES else EnergyRelation.CONTROLS
             }, combinations.map { ConfigurationBinding(it) }, meaning, route.filterIndexed { i, _ -> choices[i].isEmpty() })
-        })
+        }, endpoints)
     }
 
     fun translate(config: EnergyConfiguration, dayMaster: String): String {

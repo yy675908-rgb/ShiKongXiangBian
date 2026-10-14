@@ -22,8 +22,8 @@ class AnalysisOutputFormatterTest {
         assertEquals(EventPriority.WATCH, event.priority)
         assertEquals("应期待定", brief.window)
         assertTrue(brief.condition.contains("作用方承载待补"))
-        assertTrue(brief.basis.contains("日柱甲（主体）"))
-        assertTrue(brief.basis.contains("流时丙（输出）"))
+        assertTrue(brief.basis.contains("日柱甲（日主）"))
+        assertTrue(brief.basis.contains("流时丙（食神）"))
         assertTrue(brief.basis.indexOf("日柱甲") < brief.basis.indexOf("流时丙"))
     }
 
@@ -46,7 +46,7 @@ class AnalysisOutputFormatterTest {
         assertTrue(foundation.contains("年柱戊（干"))
         assertFalse(foundation.contains("年柱戊（支"))
         val timeline = events.flatMap { AnalysisOutputFormatter.timeline(it, r) }
-        assertTrue(timeline.any { it.startsWith("流日甲（同类） 制约 年柱戊（资源）") })
+        assertTrue(timeline.any { it.startsWith("流日甲（比肩） 制约 年柱戊（偏财）") })
         assertFalse(timeline.any { it.contains("支气") })
     }
 }

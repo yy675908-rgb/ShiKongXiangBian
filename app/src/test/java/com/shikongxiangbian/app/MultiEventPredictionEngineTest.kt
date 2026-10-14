@@ -106,17 +106,18 @@ class MultiEventPredictionEngineTest {
     @Test fun feedbackDoesNotTurnBroadDomainOverlapIntoConcreteHits() {
         val s = snapshot()
         val r = read(s)
-        val grounded = EnergyGroundedInterpreter.interpret(s, r)
+        val current = EnergyGroundedInterpreter.interpret(s, r)
+        val grounded = current.copy(events = MultiEventPredictionEngine.predict(s, r).events)
         val saved = GroundedCalibrationEngine.calibrate(r.signature, grounded, "购买物品并付款", "")
         assertEquals("待逐项核对", saved.result)
-        assertEquals(grounded, EnergyGroundedInterpreter.interpret(s, r))
+        assertEquals(current, EnergyGroundedInterpreter.interpret(s, r))
         val one = grounded.events.first().id
         val confirmed = GroundedCalibrationEngine.calibrate(r.signature, grounded, "购买物品并付款", saved.memoryRaw, setOf(one, "unknown-id"))
         assertEquals("人工确认", confirmed.result)
         assertTrue(confirmed.text.contains("1/${grounded.events.size}项"))
         assertTrue(confirmed.text.contains("其余尚未确认"))
         assertFalse(confirmed.memoryRaw.contains("unknown-id"))
-        assertEquals(grounded, EnergyGroundedInterpreter.interpret(s, r))
+        assertEquals(current, EnergyGroundedInterpreter.interpret(s, r))
     }
 
     @Test fun displayWordsCannotChangeStructuredEventPrediction() {

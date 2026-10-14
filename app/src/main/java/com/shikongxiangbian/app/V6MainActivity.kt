@@ -335,7 +335,7 @@ private fun V6AnalysisPage(
                     V6AnalysisText("具体事象尚未形成", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     V6AnalysisText("下面是已算出的组合关系与变化，不能把它当成具体事件预测。", fontSize = 16.sp)
                     V6AnalysisText("截至 $appliedDate", fontSize = 15.sp, color = GREEN_V6)
-                    val main = grounded.events.filter { it.priority != EventPriority.WATCH }
+                    val main = grounded.events.filter { it.priority != EventPriority.WATCH || it.pattern == EventPattern.COMPOSITION }
                     if (main.isEmpty()) {
                         V6AnalysisText("目前还不能确定具体事项。", fontSize = 22.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold)
                         V6AnalysisText("可在下方查看各阶段的判断，以及尚未满足的条件。")
@@ -350,7 +350,7 @@ private fun V6AnalysisPage(
             val shown = grounded.events.filter { showPending || it.priority != EventPriority.WATCH }
             item(key = "pending", contentType = "links") { V6EventLinks(grounded, shown, showPending) { showPending = !showPending } }
             if (showPending) {
-                items(grounded.events.filter { it.priority == EventPriority.WATCH }, key = { "event:${it.id}" }, contentType = { "event" }) {
+                items(grounded.events.filter { it.priority == EventPriority.WATCH && it.pattern != EventPattern.COMPOSITION }, key = { "event:${it.id}" }, contentType = { "event" }) {
                     V6EventCard(grounded.events.indexOf(it) + 1, it, reading, grounded.events)
                 }
             }
@@ -605,7 +605,7 @@ private fun V6TenGod(tg: GroundedTenGod) {
 
 @Composable
 private fun V6EventLinks(grounded: GroundedReading, shown: List<EventPrediction>, showPending: Boolean, onToggle: () -> Unit) {
-    val pending = grounded.events.count { it.priority == EventPriority.WATCH }
+    val pending = grounded.events.count { it.priority == EventPriority.WATCH && it.pattern != EventPattern.COMPOSITION }
     if (pending > 0) TextButton(onClick = onToggle) {
         V6AnalysisText(if (showPending) "收起未满足条件的组合" else "查看未满足条件的组合（$pending）")
     }

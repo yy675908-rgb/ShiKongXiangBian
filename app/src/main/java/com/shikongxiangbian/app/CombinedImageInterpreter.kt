@@ -15,16 +15,38 @@ object CombinedImageInterpreter {
         listOf(it.key, it.state.expressed, it.state.rooted, it.state.available, it.state.restricted)
     }
 
+    private val generate = mapOf("木" to "火", "火" to "土", "土" to "金", "金" to "水", "水" to "木")
+    private val control = mapOf("木" to "土", "土" to "水", "水" to "火", "火" to "金", "金" to "木")
+
+    // Enumerate actual elements before any ten-god interpretation. No named-pattern gate.
+    private fun combinations(field: EnergyFieldReading): List<EnergyConfiguration> {
+        if (field.endpoints.isEmpty()) return field.configurations
+        val nodes = field.endpoints.filter { it.state.expressed }
+        val routes = generate.keys.map { listOf(it, generate.getValue(it), generate.getValue(generate.getValue(it))) } +
+            control.map { (a, b) -> listOf(a, b) }
+        return routes.map { route ->
+            val choices = route.map { element -> nodes.filter { it.element == element } }
+            val bindings = choices.fold(listOf(emptyList<EnergyEndpoint>())) { selected, candidates ->
+                selected.flatMap { previous -> candidates.map { previous + it } }
+            }
+            EnergyConfiguration(route.joinToString(""), route, route.zipWithNext { a, b ->
+                if (generate[a] == b) EnergyRelation.GENERATES else EnergyRelation.CONTROLS
+            }, bindings.map { ConfigurationBinding(it) }, "")
+        }
+    }
+
     fun assess(field: EnergyFieldReading, before: EnergyFieldReading): List<Assessment> {
-        return field.configurations.filter { it.bindings.isNotEmpty() }.map { config ->
+        val current = combinations(field)
+        val previous = combinations(before)
+        return current.filter { it.bindings.isNotEmpty() }.map { config ->
             val keys = config.bindings.flatMap { it.endpoints }.map { it.key }.toSet()
             // Same actual stem, not another stem sharing its element.
-            val counters = field.configurations.filter { other ->
+            val counters = current.filter { other ->
                 other !== config && other.relations.contains(EnergyRelation.CONTROLS)
             }.flatMap { other -> other.bindings.filter { binding ->
                 binding.endpoints.last().key in keys && binding.endpoints.first().ready
             } }.distinctBy { signature(it) }
-            val old = before.configurations.firstOrNull { it.elements == config.elements && it.relations == config.relations }
+            val old = previous.firstOrNull { it.elements == config.elements && it.relations == config.relations }
             val oldKeys = old?.bindings.orEmpty().map { state(it) }.toSet()
             Assessment(config, config.bindings, counters, config.ready,
                 config.bindings.map { state(it) }.toSet() != oldKeys)

@@ -130,7 +130,7 @@ object AnalysisOutputFormatter {
             }
         }
         appendLine("【当前累计结果】")
-        val main = grounded.events.filter { it.priority != EventPriority.WATCH }
+        val main = grounded.events.filter { it.priority != EventPriority.WATCH || it.pattern == EventPattern.COMPOSITION }
         if (main.isEmpty()) appendLine("当前累计判断仍有条件待确认，见各层结果。")
         main.forEachIndexed { index, e ->
             val brief = event(e, reading)
