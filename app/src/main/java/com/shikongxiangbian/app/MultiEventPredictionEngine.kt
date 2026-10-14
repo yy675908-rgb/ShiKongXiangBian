@@ -37,7 +37,8 @@ data class EventPrediction(
     val configurationContext: List<String> = emptyList(),
     val configurationLimits: List<String> = emptyList(),
     val currentChange: String = "",
-    val outcome: String = ""
+    val outcome: String = "",
+    val evaluatedAt: String = ""
 )
 
 data class EventConnection(val fromId: String, val toId: String, val description: String, val condition: String)
@@ -53,7 +54,7 @@ object MultiEventPredictionEngine {
     private val disrupting = setOf("冲", "刑", "三刑", "自刑", "害", "破")
     private data class Seed(val domain: EventDomain, val pattern: EventPattern, val direction: EventDirection, val title: String, val possibilities: List<String>, val condition: String, val invalidIf: String, val path: ImpactPath, val gods: Set<String>)
 
-    fun predict(snapshot: AnalysisSnapshot, reading: ReadingV5): MultiEventReading {
+    fun predict(snapshot: AnalysisSnapshot, reading: ReadingV5, scope: String? = null): MultiEventReading {
         val paths = reading.allPaths().filter { it.natalAnchors.isNotEmpty() }
         val seeds = paths.flatMap { p -> derive(snapshot.dayMaster, p, reading) }
         val byId = paths.associateBy { it.id }
@@ -78,7 +79,7 @@ object MultiEventPredictionEngine {
                     EnergyEssenceInterpreter.process(p, reading).originReady && state.challenges.isEmpty() &&
                     (members.first().direction != EventDirection.SUPPORT || !target.restricted)
             }
-            val nearPaths = evidencePaths.filter { it.sourceLabel in setOf("流日", "流时") }
+            val nearPaths = evidencePaths.filter { if (scope == null) it.sourceLabel in setOf("流日", "流时") else it.sourceLabel == scope }
             val aligned = nearPaths.any { p -> structural(p) && clear(p) && !unresolved(p) && evidencePaths.any { earlier ->
                 earlier.sourceLabel != p.sourceLabel && earlier.order < p.order && clear(earlier) && !unresolved(earlier) && endpointKeys(p).intersect(endpointKeys(earlier)).isNotEmpty()
             } }
@@ -89,9 +90,9 @@ object MultiEventPredictionEngine {
                     origin.rooted && !origin.restricted && state.challenges.isEmpty())
             }
             val changedNearPaths = nearPaths.filter { EventChangeInterpreter.hasChange(it, reading) }
-            val possible = changedNearPaths.any { usable(it) }
+            val possible = (if (scope == null) changedNearPaths else evidencePaths).any { usable(it) }
             // A constrained hour path cannot borrow a clear day path to claim an hour trigger.
-            val usablePaths = evidencePaths.filter { usable(it) && (it.sourceLabel !in setOf("流日", "流时") || EventChangeInterpreter.hasChange(it, reading)) }
+            val usablePaths = evidencePaths.filter { usable(it) && (scope != null || it.sourceLabel !in setOf("流日", "流时") || EventChangeInterpreter.hasChange(it, reading)) }
             val latest = usablePaths.filter { it.sourceLabel in setOf("流日", "流时") }.maxByOrNull { it.order }
                 ?: usablePaths.maxByOrNull { it.order } ?: evidencePaths.maxBy { it.order }
             val configurationLimits = EnergyConfigurationInterpreter.counterRoutes(latest, reading.field)
@@ -104,10 +105,11 @@ object MultiEventPredictionEngine {
                 else -> EventPriority.WATCH
             }
             val reason = when (priority) {
-                EventPriority.FOCUS -> "不同层承接同一事项路径，日/时已触及，且至少一条显性承载条件较齐；这是结构排序，不是命中概率。"
-                EventPriority.POSSIBLE -> "已有日/时作用依据，但通路承载、重复承接或现实场景尚未全部确认。"
+                EventPriority.FOCUS -> if (scope != null) "截至本层，同一落点得到前层与本层支持。" else "不同层承接同一事项路径，日/时已触及，且至少一条显性承载条件较齐；这是结构排序，不是命中概率。"
+                EventPriority.POSSIBLE -> if (scope != null) "截至本层，已有可用作用路径；保留前层仍可延续的判断。" else "已有日/时作用依据，但通路承载、重复承接或现实场景尚未全部确认。"
                 EventPriority.WATCH -> when {
                     ambiguousPeer -> "同类根气不能证明另有参与者，也未确定协作或分用，不能直接作为人际应事。"
+                    scope != null -> "截至本层，相关作用条件不足或受到其他路径影响。"
                     nearPaths.isEmpty() -> "只有运/年/月背景，未见本项日/时承接，暂不列为近期重点。"
                     nearPaths.any { reading.energyOf(it).challenges.isNotEmpty() } -> "近端来源又被后层作用，原先通路能否延续待检，不能直接沿用早层结论。"
                     nearPaths.all { reading.energyOf(it).source.restricted } -> "本项近端来源仍受牵制；别处同五行有承载不等于此路径恢复。"
@@ -130,7 +132,7 @@ object MultiEventPredictionEngine {
             EventPrediction(
                 id = key, domain = members.first().domain, pattern = members.first().pattern, direction = members.first().direction,
                 title = members.first().title, possibilities = evidencePaths.map { EventChangeInterpreter.outcome(members.first().pattern, it, reading) }.distinct(), priority = priority, priorityReason = reason,
-                timeWindow = if (usablePaths.isEmpty()) "${latest.sourceLabel}关系待检，尚未成立有效触发；应期未定" else window(latest.sourceLabel), condition = (members.map { it.condition } + configurationLimits).distinct().joinToString("；"),
+                timeWindow = if (usablePaths.isEmpty()) "${latest.sourceLabel}关系待检，尚未成立有效触发；应期未定" else if (scope != null) scopeWindow(scope) else window(latest.sourceLabel), condition = (members.map { it.condition } + configurationLimits).distinct().joinToString("；"),
                 invalidIf = members.map { it.invalidIf }.distinct().joinToString("；"), evidence = facts,
                 pathIds = evidencePaths.map { it.id }.toSet(), natalAnchors = evidencePaths.flatMap { it.natalAnchors }.toSet(),
                 tenGods = members.flatMap { it.gods }.toSet(), latestLayer = latest.sourceLabel,
@@ -151,7 +153,7 @@ object MultiEventPredictionEngine {
                 keyPathId = latest.id, hasUsableWindow = usablePaths.isNotEmpty(),
                 configurationContext = configurationContext, configurationLimits = configurationLimits,
                 currentChange = EventChangeInterpreter.change(latest, reading),
-                outcome = EventChangeInterpreter.outcome(members.first().pattern, latest, reading)
+                outcome = EventChangeInterpreter.outcome(members.first().pattern, latest, reading), evaluatedAt = scope.orEmpty()
             )
         }
         // Opposed readings remain explicit alternatives; don't call both equally certain.
@@ -265,6 +267,15 @@ object MultiEventPredictionEngine {
         EnergyRelation.CONTROLS -> "制约对方端点，不能跳过双方根源直接判坏事"
         EnergyRelation.CONTROLLED_BY -> "输入受对方制约，不能按输入十神直接取事"
         EnergyRelation.UNKNOWN -> "关系未定，保持候选"
+    }
+
+    private fun scopeWindow(layer: String): String = when (layer) {
+        "大运" -> "本步大运"
+        "流年" -> "本年"
+        "流月" -> "本月"
+        "流日" -> "当日"
+        "流时" -> "本时辰"
+        else -> "本层"
     }
 
     private fun window(layer: String): String = when (layer) {

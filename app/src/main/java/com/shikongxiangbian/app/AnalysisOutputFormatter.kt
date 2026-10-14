@@ -43,7 +43,7 @@ object AnalysisOutputFormatter {
                 else -> "通路条件待补"
             }
         }
-        val window = if (!event.hasUsableWindow) "应期待定" else when (event.latestLayer) {
+        val window = if (event.evaluatedAt.isNotBlank()) event.timeWindow else if (!event.hasUsableWindow) "应期待定" else when (event.latestLayer) {
             "流时" -> "本时辰至当日"
             "流日" -> "当日"
             "流月" -> "本月背景"
@@ -127,7 +127,13 @@ object AnalysisOutputFormatter {
             AnalysisLanguage.changes(it.configurationChanges).forEach { change -> appendLine("组合变化：$change") }
         }
         appendLine()
-        appendLine("【可能发生的事】")
+        grounded.stages.forEach { stage ->
+            appendLine("【${stage.layer}累计结果】")
+            stage.entries.filter { it.visible }.forEach { entry ->
+                appendLine("${entry.change}：${title(entry.event)}。${entry.event.outcome}")
+            }
+        }
+        appendLine("【当前累计结果】")
         val main = grounded.events.filter { it.priority != EventPriority.WATCH }
         if (main.isEmpty()) appendLine("目前没有条件较齐的近期事项。")
         main.forEachIndexed { index, e ->

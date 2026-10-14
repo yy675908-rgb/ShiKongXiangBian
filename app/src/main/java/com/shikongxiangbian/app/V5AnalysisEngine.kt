@@ -101,7 +101,8 @@ data class LayerAnalysisV5(
     val paths: List<ImpactPath> = emptyList(),
     val summary: String = "",
     val field: EnergyFieldReading = EnergyFieldReading(),
-    val configurationChanges: List<String> = emptyList()
+    val configurationChanges: List<String> = emptyList(),
+    val cumulativePathEnergy: Map<String, PathEnergy> = emptyMap()
 )
 
 data class ReadingV5(
@@ -159,3 +160,4 @@ object V5AnalysisEngine {
         return CalibrationV5(result.result, result.actualDomain, result.text, result.memoryAfter, result.memoryRaw)
     }
 }
+

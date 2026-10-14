@@ -331,8 +331,8 @@ private fun V6AnalysisPage(
                 V6Layer(it, grounded)
             }
             item(key = "eventsTitle", contentType = "header") {
-                V6Label("③ 可能应事")
-                if (grounded.events.none { it.priority != EventPriority.WATCH }) Text("目前没有条件较齐的近期事项。", color = Color.Gray)
+                V6Label("③ 当前累计结果")
+                if (grounded.events.none { it.priority != EventPriority.WATCH }) Text("当前累计判断仍有条件待确认，见各层结果。", color = Color.Gray)
             }
             val shown = grounded.events.filter { showPending || it.priority != EventPriority.WATCH }
             items(shown, key = { "event:${it.id}" }, contentType = { "event" }) {
@@ -465,9 +465,20 @@ private fun V6Layer(layer: LayerAnalysisV5, grounded: GroundedReading) {
     V6Section("${layer.layer} ${layer.ganZhi}") {
         V6AnalysisText(layer.summary.ifBlank { layer.focus }, lineHeight = 20.sp)
         if (layer.configurationChanges.isNotEmpty()) V6AnalysisText("组合变化：${AnalysisLanguage.changes(layer.configurationChanges).take(2).joinToString("；")}", fontSize = 13.sp, lineHeight = 20.sp, color = GREEN_V6)
+        grounded.stages.firstOrNull { it.layer == layer.layer }?.let { stage ->
+            val results = stage.entries.filter { it.visible }
+            if (results.isEmpty()) V6AnalysisText("本层结果：尚无条件较齐的事项判断。", fontSize = 13.sp)
+            results.forEach { entry ->
+                V6AnalysisText("${entry.change} · ${AnalysisOutputFormatter.title(entry.event)}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
+                V6AnalysisText(entry.event.outcome, fontSize = 14.sp, lineHeight = 20.sp)
+            }
+        }
         if (domains.isNotBlank()) V6AnalysisText("涉及：$domains", fontSize = 12.sp, color = Color.Gray)
         TextButton(onClick = { expanded = !expanded }) { V6AnalysisText(if (expanded) "收起" else "看本层依据") }
         if (expanded) {
+            grounded.stages.firstOrNull { it.layer == layer.layer }?.entries?.forEach { entry ->
+                V6Sub("${entry.change} · ${AnalysisOutputFormatter.title(entry.event)}", "${entry.event.keyBasis}\n${entry.event.priorityReason}")
+            }
             V6Sub("作用落点", layer.focus)
             V6Sub("进入前", layer.priorState)
             V6Sub("进入后", layer.resultingState)

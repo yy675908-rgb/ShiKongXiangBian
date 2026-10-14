@@ -17,13 +17,15 @@ data class GroundedReading(
     val tenGod: GroundedTenGod,
     val judgment: LinkedHashMap<String, String>,
     val events: List<EventPrediction> = emptyList(),
-    val connections: List<EventConnection> = emptyList()
+    val connections: List<EventConnection> = emptyList(),
+    val stages: List<CumulativeEventStage> = emptyList()
 )
 
 /** Main summary shares the focal field; parallel event paths are translated independently. */
 object EnergyGroundedInterpreter {
     fun interpret(snapshot: AnalysisSnapshot, reading: ReadingV5): GroundedReading {
-        val parallel = MultiEventPredictionEngine.predict(snapshot, reading)
+        val stages = CumulativeEventInterpreter.interpret(snapshot, reading)
+        val parallel = stages.lastOrNull()?.result ?: MultiEventReading(emptyList(), emptyList())
         val key = reading.focal()?.copy(sourceAvailable = reading.finalSourceAvailable, sourceRestricted = reading.finalSourceRestricted)
         val focalPath = key?.let { layer -> reading.allPaths().firstOrNull { path ->
             path.sourceLabel == layer.layer && path.sourceGan == layer.driverGan && path.targetLabel == layer.targetLabel &&
@@ -107,7 +109,7 @@ object EnergyGroundedInterpreter {
             judgment["内部外部"] = "各项保留各自原局承受点，不能把不同落点统一解释为同一事件。"
             judgment["发展阶段"] = "可能并行；共享依据的事项仅在前项发生且需处理时接续。"
         }
-        return GroundedReading(image, GroundedTenGod(element, nature(element), state, relationToDay, tg, human, logic, essence, combinations), judgment, parallel.events, parallel.connections)
+        return GroundedReading(image, GroundedTenGod(element, nature(element), state, relationToDay, tg, human, logic, essence, combinations), judgment, parallel.events, parallel.connections, stages)
     }
 
     private fun humanBehavior(tg: String, key: LayerAnalysisV5?, process: EnergyProcess?): String {
@@ -153,3 +155,4 @@ object EnergyGroundedInterpreter {
         else -> "未定"
     }
 }
+

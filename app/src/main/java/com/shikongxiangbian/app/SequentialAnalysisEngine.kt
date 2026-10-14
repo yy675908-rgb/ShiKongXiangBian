@@ -491,6 +491,18 @@ object SequentialAnalysisEngine {
         )
     }
 
+    private fun resolvePaths(field: Field, allPaths: List<ImpactPath>): Map<String, PathEnergy> {
+        return allPaths.associate { p ->
+            val sourceNode = field.nodes.first { it.label == p.sourceLabel }
+            val targetNode = field.nodes.first { it.label == p.targetLabel }
+            val challenges = allPaths.filter { later ->
+                later.order > p.order && later.targetLabel == p.sourceLabel && later.targetGan == p.sourceGan && later.channel == p.channel &&
+                    (later.relation == EnergyRelation.CONTROLS || "旁干牵合" in later.techniques || later.techniques.any { it in setOf("冲", "三刑", "刑", "自刑", "害", "破") })
+            }.map { "${it.sourceLabel}${it.sourceGanZhi}另作用${p.sourceLabel}${p.sourceGan}：${it.evidence}不能把前层作用视为始终可兑现。" }
+            p.id to PathEnergy(field.carrier(sourceNode, p.sourceGan, p.channel), field.carrier(targetNode, p.targetGan, p.channel), challenges)
+        }
+    }
+
     fun analyze(snapshot: AnalysisSnapshot, target: LocalDateTime, memoryRaw: String): ReadingV5 {
         require(snapshot.natal.map { it.label }.toSet().containsAll(setOf("年柱", "月柱", "日柱", "时柱"))) { "本命四柱不完整" }
         require(snapshot.natal.first { it.label == "日柱" }.gan == snapshot.dayMaster) { "日主与日柱不一致" }
@@ -507,7 +519,8 @@ object SequentialAnalysisEngine {
         val layers = mutableListOf<LayerAnalysisV5>()
         incoming.forEachIndexed { i, n ->
             val after = field.append(n)
-            layers += buildLayer(i, n, field, after, core, layers)
+            val layer = buildLayer(i, n, field, after, core, layers)
+            layers += layer.copy(cumulativePathEnergy = resolvePaths(after, layers.flatMap { it.paths } + layer.paths))
             field = after
         }
         val key = layers.lastOrNull { it.affectsCore && (it.sourceAvailable || it.changeRole in setOf(ChangeRole.DISTURB, ChangeRole.TIE)) && it.changeRole in setOf(ChangeRole.DISTURB, ChangeRole.TIE, ChangeRole.SUPPLEMENT, ChangeRole.RESTRAIN, ChangeRole.DRAIN) }
@@ -525,15 +538,7 @@ object SequentialAnalysisEngine {
         // Versioned signature includes natal structure and condition; old broad keys do not silently mix.
         val finalSource = key?.let { field.carrier(field.nodes.first { node -> node.label == it.layer }, it.driverGan, it.channel) }
         val allPaths = layers.flatMap { it.paths }
-        val finalPathEnergy = allPaths.associate { p ->
-            val sourceNode = field.nodes.first { it.label == p.sourceLabel }
-            val targetNode = field.nodes.first { it.label == p.targetLabel }
-            val challenges = allPaths.filter { later ->
-                later.order > p.order && later.targetLabel == p.sourceLabel && later.targetGan == p.sourceGan && later.channel == p.channel &&
-                    (later.relation == EnergyRelation.CONTROLS || "旁干牵合" in later.techniques || later.techniques.any { it in setOf("冲", "三刑", "刑", "自刑", "害", "破") })
-            }.map { "${it.sourceLabel}${it.sourceGanZhi}另作用${p.sourceLabel}${p.sourceGan}：${it.evidence}不能把前层作用视为始终可兑现。" }
-            p.id to PathEnergy(field.carrier(sourceNode, p.sourceGan, p.channel), field.carrier(targetNode, p.targetGan, p.channel), challenges)
-        }
+        val finalPathEnergy = resolvePaths(field, allPaths)
         val eventShape = allPaths.map { p ->
             val state = finalPathEnergy.getValue(p.id)
             listOf(p.sourceGan, p.targetGan, p.natalAnchors.sorted().joinToString(","), p.sourceLabel, p.channel.name,
@@ -541,7 +546,7 @@ object SequentialAnalysisEngine {
                 state.target.available.toString(), state.target.restricted.toString(), state.challenges.joinToString()).joinToString(":")
         }.distinct().sorted().joinToString("|")
         val shapeHash = java.security.MessageDigest.getInstance("SHA-256").digest(eventShape.toByteArray(Charsets.UTF_8)).take(8).joinToString("") { "%02x".format(it) }
-        val signature = listOf("seq7", natalNodes.joinToString("") { it.gan + it.zhi }, core.issue.name, core.focusElement, field.currentMonth, key?.sourceElement ?: "无", key?.changeRole?.name ?: "无", key?.targetLabel ?: "无", tenGod, key?.relationKind?.name ?: "无", finalSource?.available.toString(), finalSource?.restricted.toString(), shapeHash).joinToString("-")
+        val signature = listOf("seq8", natalNodes.joinToString("") { it.gan + it.zhi }, core.issue.name, core.focusElement, field.currentMonth, key?.sourceElement ?: "无", key?.changeRole?.name ?: "无", key?.targetLabel ?: "无", tenGod, key?.relationKind?.name ?: "无", finalSource?.available.toString(), finalSource?.restricted.toString(), shapeHash).joinToString("-")
         val image = "原局${core.focusElement}承接轴上，${key?.let { "${it.layer}带来${roleName(it.changeRole)}" } ?: "尚无外来变化"}；${climate(field)}"
         val judgment = linkedMapOf("事情类型" to (key?.let { roleName(it.changeRole) } ?: "原局观察"), "领域" to tenGodDomain(tenGod))
         return ReadingV5(natal, layers, qi, image, bodyUse, tenGod, tenGodDomain(tenGod), judgment, signature,

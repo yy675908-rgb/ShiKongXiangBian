@@ -15,7 +15,12 @@ object AnalysisReplay {
             listOf("流年" to ec.year, "流月" to ec.month, "流日" to ec.day, "流时" to ec.time).map { pillar(it.first, it.second) }, dm,
             args[4].takeUnless { it == "-" }?.let { DaYunView(it, time.year, time.year, 0, 0) }, emptyList())
         val r = V5AnalysisEngine.analyze(s, time, "")
-        val output = MultiEventPredictionEngine.predict(s, r)
+        val stages = CumulativeEventInterpreter.interpret(s, r)
+        stages.forEach { stage ->
+            println("STAGE ${stage.layer}${stage.ganZhi}")
+            stage.entries.filter { it.visible }.forEach { println("${it.change}: ${it.event.outcome}") }
+        }
+        val output = stages.last().result
         println("TIME $time | " + s.dynamic.joinToString(" ") { it.label + it.ganZhi })
         output.events.forEach { println("${it.priority}\t${it.id}\t${it.outcome}\t${it.currentChange}") }
         println("MAIN ${output.events.count { it.priority != EventPriority.WATCH }} | CONNECTIONS ${output.connections.size}")
