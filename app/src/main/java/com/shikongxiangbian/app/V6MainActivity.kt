@@ -275,6 +275,8 @@ private fun V6AnalysisPage(
 ) {
     val context = LocalContext.current
     var showPending by rememberSaveable(forecast?.input?.toString()) { mutableStateOf(false) }
+    var showDateControls by rememberSaveable { mutableStateOf(false) }
+    var showFoundation by rememberSaveable { mutableStateOf(false) }
     val reading = forecast?.reading
     val grounded = forecast?.grounded
     LazyColumn(
@@ -284,10 +286,14 @@ private fun V6AnalysisPage(
     ) {
         item(key = "header", contentType = "header") {
             Text("时空象变", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = INK_V6)
-            Text("先看原局能量，再看逐层变化与具体应事。", fontSize = 13.sp, color = Color.Gray)
+            Text("先看当前结果，再看每一步怎样改变结果。", fontSize = 15.sp, color = GREEN_V6)
         }
         item(key = "date", contentType = "input") {
-            V6Section("查看日期（公历）", compact = true) {
+            V6Section("分析时间 · $appliedDate", compact = true) {
+                TextButton(onClick = { showDateControls = !showDateControls }) {
+                    Text(if (showDateControls) "收起日期选择" else "更换时间", fontSize = 16.sp)
+                }
+                if (showDateControls || dateError != null) {
                 OutlinedTextField(value = dateText, onValueChange = onDateText,
                     modifier = Modifier.fillMaxWidth(), label = { Text("yyyy-MM-dd HH:mm") },
                     singleLine = true, isError = dateError != null,
@@ -303,7 +309,8 @@ private fun V6AnalysisPage(
                     OutlinedButton(onClick = { onStepDay(-1) }) { Text("前一天") }
                     OutlinedButton(onClick = { onStepDay(1) }) { Text("后一天") }
                 }
-                if (dateText.trim() != appliedDate) Text("当前分析：$appliedDate；修改后点查看。", fontSize = 12.sp, color = GREEN_V6)
+                if (dateText.trim() != appliedDate) Text("当前分析：$appliedDate；修改后点查看。", fontSize = 15.sp, color = GREEN_V6)
+                }
             }
         }
         if (!hasBirth) {
@@ -323,23 +330,46 @@ private fun V6AnalysisPage(
                 TextButton(onClick = onOpenSettings) { Text("检查本命") }
             } }
         } else {
-            item(key = "chart", contentType = "chart") { V6TimeSpace(forecast.snapshot, forecast.input.date) }
-            item(key = "pipeline", contentType = "details") { V6Pipeline() }
-            item(key = "natal", contentType = "details") { V6Natal(reading.natal) }
-            item(key = "layersTitle", contentType = "header") { V6Label("② 逐层变化") }
+            item(key = "currentResult", contentType = "result") {
+                V6Section("当前结果") {
+                    V6AnalysisText("截至 $appliedDate", fontSize = 15.sp, color = GREEN_V6)
+                    val main = grounded.events.filter { it.priority != EventPriority.WATCH }
+                    if (main.isEmpty()) {
+                        V6AnalysisText("目前还不能确定具体事项。", fontSize = 22.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold)
+                        V6AnalysisText("可在下方查看各阶段的判断，以及尚未满足的条件。")
+                    } else {
+                        main.forEachIndexed { index, event ->
+                            V6EventCard(index + 1, event, reading, grounded.events)
+                            if (index != main.lastIndex) HorizontalDivider(Modifier.padding(vertical = 12.dp), color = LINE_V6)
+                        }
+                    }
+                }
+            }
+            val shown = grounded.events.filter { showPending || it.priority != EventPriority.WATCH }
+            item(key = "pending", contentType = "links") { V6EventLinks(grounded, shown, showPending) { showPending = !showPending } }
+            if (showPending) {
+                items(grounded.events.filter { it.priority == EventPriority.WATCH }, key = { "event:${it.id}" }, contentType = { "event" }) {
+                    V6EventCard(grounded.events.indexOf(it) + 1, it, reading, grounded.events)
+                }
+            }
+            item(key = "layersTitle", contentType = "header") {
+                V6Label("结果是怎样一步步形成的")
+                V6AnalysisText("每一步都接着前一步判断。", fontSize = 16.sp, color = GREEN_V6)
+            }
             items(reading.layers, key = { "layer:${it.order}:${it.layer}" }, contentType = { "layer" }) {
                 V6Layer(it, grounded)
             }
-            item(key = "eventsTitle", contentType = "header") {
-                V6Label("③ 当前累计结果")
-                if (grounded.events.none { it.priority != EventPriority.WATCH }) Text("当前累计判断仍有条件待确认，见各层结果。", color = Color.Gray)
+            item(key = "foundationToggle", contentType = "links") {
+                TextButton(onClick = { showFoundation = !showFoundation }) {
+                    V6AnalysisText(if (showFoundation) "收起命盘与完整推导" else "查看命盘与完整推导")
+                }
             }
-            val shown = grounded.events.filter { showPending || it.priority != EventPriority.WATCH }
-            items(shown, key = { "event:${it.id}" }, contentType = { "event" }) {
-                V6EventCard(grounded.events.indexOf(it) + 1, it, reading, grounded.events)
+            if (showFoundation) {
+                item(key = "chart", contentType = "chart") { V6TimeSpace(forecast.snapshot, forecast.input.date) }
+                item(key = "pipeline", contentType = "details") { V6Pipeline() }
+                item(key = "natal", contentType = "details") { V6Natal(reading.natal) }
+                item(key = "derivation", contentType = "details") { V6Derivation(reading, grounded) }
             }
-            item(key = "pending", contentType = "links") { V6EventLinks(grounded, shown, showPending) { showPending = !showPending } }
-            item(key = "derivation", contentType = "details") { V6Derivation(reading, grounded) }
             item(key = "feedback", contentType = "input") {
                 V6Section("实际经过 · ${forecast.input.date}") {
                     Text("记录实际经过，勾选已发生的事项。", fontSize = 12.sp, color = Color.Gray)
@@ -461,21 +491,44 @@ private fun V6Pipeline() {
 @Composable
 private fun V6Layer(layer: LayerAnalysisV5, grounded: GroundedReading) {
     var expanded by rememberSaveable(layer) { mutableStateOf(false) }
-    val domains = remember(layer, grounded) { AnalysisOutputFormatter.domains(layer, grounded) }
-    V6Section("${layer.layer} ${layer.ganZhi}") {
-        V6AnalysisText(layer.summary.ifBlank { layer.focus }, lineHeight = 20.sp)
-        if (layer.configurationChanges.isNotEmpty()) V6AnalysisText("组合变化：${AnalysisLanguage.changes(layer.configurationChanges).take(2).joinToString("；")}", fontSize = 13.sp, lineHeight = 20.sp, color = GREEN_V6)
-        grounded.stages.firstOrNull { it.layer == layer.layer }?.let { stage ->
-            val results = stage.entries.filter { it.visible }
-            if (results.isEmpty()) V6AnalysisText("本层结果：尚无条件较齐的事项判断。", fontSize = 13.sp)
-            results.forEach { entry ->
-                V6AnalysisText("${entry.change} · ${AnalysisOutputFormatter.title(entry.event)}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
-                V6AnalysisText(entry.event.outcome, fontSize = 14.sp, lineHeight = 20.sp)
+    val stageIndex = grounded.stages.indexOfFirst { it.layer == layer.layer }
+    val stage = grounded.stages.getOrNull(stageIndex)
+    val previous = grounded.stages.getOrNull(stageIndex - 1)
+    val period = when (layer.layer) {
+        "大运" -> "这步大运"
+        "流年" -> "这一年"
+        "流月" -> "这个月"
+        "流日" -> "这一天"
+        "流时" -> "这个时辰"
+        else -> layer.layer
+    }
+    V6Section("$period · ${layer.ganZhi}") {
+        V6AnalysisText(if (previous == null) "在本命基础上判断" else "接着${previous.layer}的结果判断", fontSize = 15.sp, color = GREEN_V6)
+        val results = stage?.entries.orEmpty().filter { it.visible }
+        if (results.isEmpty()) V6AnalysisText("这一步还不能确定具体事项。")
+        results.forEachIndexed { index, entry ->
+            if (index > 0) HorizontalDivider(Modifier.padding(vertical = 12.dp), color = LINE_V6)
+            val status = when (entry.change) {
+                "新增" -> "这一步出现"
+                "延续" -> "沿用前一步判断"
+                "调整" -> "前一步判断有变化"
+                "暂缓" -> "前一步判断暂不成立"
+                "条件转好" -> "原先待定，现在条件转好"
+                else -> "仍需确认条件"
+            }
+            V6AnalysisText(status, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
+            V6AnalysisText(AnalysisOutputFormatter.title(entry.event), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            if (entry.change == "暂缓") {
+                V6AnalysisText("此前判断：${entry.event.outcome}")
+                V6AnalysisText("这一步条件不足，暂不作为当前结论。", color = GREEN_V6)
+            } else {
+                V6AnalysisText(entry.event.outcome)
             }
         }
-        if (domains.isNotBlank()) V6AnalysisText("涉及：$domains", fontSize = 12.sp, color = Color.Gray)
-        TextButton(onClick = { expanded = !expanded }) { V6AnalysisText(if (expanded) "收起" else "看本层依据") }
+        TextButton(onClick = { expanded = !expanded }) { V6AnalysisText(if (expanded) "收起依据" else "为什么这样判断") }
         if (expanded) {
+            V6Sub("本层变化", layer.summary.ifBlank { layer.focus })
+            if (layer.configurationChanges.isNotEmpty()) V6Sub("组合变化", AnalysisLanguage.changes(layer.configurationChanges).joinToString("；"))
             grounded.stages.firstOrNull { it.layer == layer.layer }?.entries?.forEach { entry ->
                 V6Sub("${entry.change} · ${AnalysisOutputFormatter.title(entry.event)}", "${entry.event.keyBasis}\n${entry.event.priorityReason}")
             }
@@ -571,10 +624,10 @@ private fun V6EventCard(number: Int, event: EventPrediction, reading: ReadingV5,
     val foundation = remember(event, reading, expanded) { if (expanded) AnalysisOutputFormatter.foundation(event, reading) else "" }
     val timeline = remember(event, reading, expanded) { if (expanded) AnalysisOutputFormatter.timeline(event, reading).joinToString("\n") else "" }
     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(12.dp)) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            V6AnalysisText("$number. ${AnalysisOutputFormatter.title(event)}", fontWeight = FontWeight.Bold, color = GREEN_V6)
-            V6AnalysisText("${event.priority.title} · ${brief.window}", fontSize = 12.sp, color = Color.Gray)
-            V6AnalysisText(brief.outcome, lineHeight = 21.sp)
+        Column(Modifier.padding(vertical = 10.dp, horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            V6AnalysisText("$number. ${AnalysisOutputFormatter.title(event)}", fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
+            V6AnalysisText("${event.priority.title} · ${brief.window}", fontSize = 16.sp, color = GREEN_V6)
+            V6AnalysisText(brief.outcome, fontSize = 20.sp, lineHeight = 30.sp)
             val alternatives = allEvents.filter { it.id in event.conflictsWith }
             if (alternatives.isNotEmpty()) V6AnalysisText("其他条件下：${alternatives.joinToString("、") { AnalysisOutputFormatter.title(it) }}", fontSize = 12.sp, color = GREEN_V6)
             TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) { V6AnalysisText(if (expanded) "收起" else "查看依据") }
@@ -786,14 +839,14 @@ private fun V6SettingsPage(
 
 @Composable
 private fun V6Sub(title: String, text: String, readable: Boolean = true) {
-    V6AnalysisText(title, fontSize = 12.sp, color = GREEN_V6, fontWeight = FontWeight.Bold)
-    if (readable) V6AnalysisText(text, lineHeight = 20.sp) else Text(text, lineHeight = 20.sp)
+    V6AnalysisText(title, fontSize = 16.sp, color = GREEN_V6, fontWeight = FontWeight.Bold)
+    if (readable) V6AnalysisText(text) else Text(text, fontSize = 18.sp, lineHeight = 28.sp)
     Spacer(Modifier.height(8.dp))
 }
 
 @Composable
 private fun V6Label(text: String) {
-    V6AnalysisText(text, fontSize = 11.sp, color = GREEN_V6, fontWeight = FontWeight.Bold)
+    V6AnalysisText(text, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp), fontSize = 22.sp, lineHeight = 30.sp, color = GREEN_V6, fontWeight = FontWeight.Bold)
 }
 
 @Composable
@@ -804,7 +857,7 @@ private fun V6Section(title: String, compact: Boolean = false, content: @Composa
         shape = RoundedCornerShape(18.dp)
     ) {
         Column(Modifier.padding(if (compact) 12.dp else 16.dp)) {
-            V6AnalysisText(title, fontSize = if (compact) 15.sp else 17.sp, fontWeight = FontWeight.Bold, color = INK_V6)
+            V6AnalysisText(title, fontSize = if (compact) 17.sp else 24.sp, fontWeight = FontWeight.Bold, color = INK_V6)
             Spacer(Modifier.height(if (compact) 6.dp else 9.dp))
             HorizontalDivider(color = LINE_V6)
             Spacer(Modifier.height(if (compact) 6.dp else 9.dp))
@@ -815,8 +868,8 @@ private fun V6Section(title: String, compact: Boolean = false, content: @Composa
 
 @Composable
 private fun V6AnalysisText(
-    text: String, modifier: Modifier = Modifier, fontSize: TextUnit = TextUnit.Unspecified,
-    lineHeight: TextUnit = TextUnit.Unspecified, fontWeight: FontWeight? = null, color: Color = Color.Unspecified
+    text: String, modifier: Modifier = Modifier, fontSize: TextUnit = 18.sp,
+    lineHeight: TextUnit = 28.sp, fontWeight: FontWeight? = null, color: Color = Color.Unspecified
 ) {
     val readable = remember(text) { AnalysisLanguage.text(text) }
     Text(readable, modifier = modifier, fontSize = fontSize, lineHeight = lineHeight, fontWeight = fontWeight, color = color)
