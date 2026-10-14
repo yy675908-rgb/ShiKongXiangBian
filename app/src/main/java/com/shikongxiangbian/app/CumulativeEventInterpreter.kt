@@ -10,7 +10,8 @@ object CumulativeEventInterpreter {
         return reading.layers.mapIndexed { index, layer ->
             val prefix = reading.copy(layers = reading.layers.take(index + 1), field = layer.field,
                 finalEnergy = emptyMap(), finalPathEnergy = layer.cumulativePathEnergy)
-            val predicted = MultiEventPredictionEngine.predict(snapshot, prefix, layer.layer)
+            val beforeField = if (index == 0) reading.natal.field else reading.layers[index - 1].field
+            val predicted = CombinedImageInterpreter.predict(prefix, beforeField, layer.layer)
             val ids = predicted.events.map { it.id }.toSet()
             val suspended = previous.values.filter { it.id !in ids }.map { it.copy(
                 priority = EventPriority.WATCH, priorityReason = "前层判断在本层不再满足原有条件。",

@@ -3,11 +3,11 @@ package com.shikongxiangbian.app
 enum class EventDomain(val title: String) {
     ARRANGEMENT("出行与位置安排"), ENVIRONMENT("空间与用品"), REST("休息与日常节奏"),
     RESOURCES("钱物与资源"), COMMUNICATION("沟通与交涉"), TASKS("任务与规则"),
-    INFORMATION("资料与支持"), RELATIONSHIPS("人际与分配")
+    INFORMATION("资料与支持"), RELATIONSHIPS("人际与分配"), COMPOSITION("五行组合")
 }
 enum class EventPriority(val title: String) { FOCUS("优先关注"), POSSIBLE("次要可能"), WATCH("条件待补") }
 enum class EventDirection { SUPPORT, STRAIN, CHANGE, REPEAT }
-enum class EventPattern { MOVE, HIDDEN_ISSUE, INTERRUPTED_REST, RESOURCE_TRANSFER, RESOURCE_DELAY, RESOURCE_GAIN, NEGOTIATE, OUTPUT, REWORK, ADDED_DEMAND, CONFIRM_TERMS, RECHECK_RULES, RECEIVE_SUPPORT, RECHECK_DOCUMENTS, COORDINATE, ALLOCATION_FRICTION, ACTION_RESTRICTED }
+enum class EventPattern { COMPOSITION, MOVE, HIDDEN_ISSUE, INTERRUPTED_REST, RESOURCE_TRANSFER, RESOURCE_DELAY, RESOURCE_GAIN, NEGOTIATE, OUTPUT, REWORK, ADDED_DEMAND, CONFIRM_TERMS, RECHECK_RULES, RECEIVE_SUPPORT, RECHECK_DOCUMENTS, COORDINATE, ALLOCATION_FRICTION, ACTION_RESTRICTED }
 
 data class EventPrediction(
     val id: String,
@@ -38,7 +38,9 @@ data class EventPrediction(
     val configurationLimits: List<String> = emptyList(),
     val currentChange: String = "",
     val outcome: String = "",
-    val evaluatedAt: String = ""
+    val evaluatedAt: String = "",
+    val originalRelations: List<String> = emptyList(),
+    val imageStatus: String = ""
 )
 
 data class EventConnection(val fromId: String, val toId: String, val description: String, val condition: String)

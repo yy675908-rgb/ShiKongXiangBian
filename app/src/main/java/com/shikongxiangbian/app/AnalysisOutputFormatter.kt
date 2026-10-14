@@ -5,6 +5,7 @@ data class EventBrief(val outcome: String, val basis: String, val condition: Str
 /** Presentation only: no new candidates, scoring, text parsing or prediction truncation. */
 object AnalysisOutputFormatter {
     fun title(event: EventPrediction): String = when (event.pattern) {
+        EventPattern.COMPOSITION -> event.title
         EventPattern.MOVE -> "安排变动"
         EventPattern.HIDDEN_ISSUE -> "用品异常"
         EventPattern.INTERRUPTED_REST -> "休息受扰"
@@ -25,6 +26,7 @@ object AnalysisOutputFormatter {
     }
 
     fun event(event: EventPrediction, reading: ReadingV5): EventBrief {
+        if (event.pattern == EventPattern.COMPOSITION) return EventBrief(event.outcome, event.keyBasis, event.condition, event.timeWindow)
         val path = reading.allPaths().firstOrNull { it.id == event.keyPathId }
         // The UI must use the actual analysis result, not replace it with a fixed category sentence.
         val outcome = event.outcome.ifBlank { event.possibilities.joinToString("；") }
@@ -58,14 +60,7 @@ object AnalysisOutputFormatter {
     fun shortBasis(path: ImpactPath, dayMaster: String = ""): String {
         fun endpoint(label: String, gan: String): String {
             if (dayMaster.isBlank()) return label + gan
-            val role = if (label == "日柱" && path.channel == EvidenceChannel.STEM) "主体" else when (GanZhiEngine.tenGod(dayMaster, gan)) {
-                "比肩", "劫财" -> "同类"
-                "食神", "伤官" -> "输出"
-                "正财", "偏财" -> "资源"
-                "正官", "七杀" -> "约束"
-                "正印", "偏印" -> "补给"
-                else -> "作用未定"
-            }
+            val role = if (label == "日柱" && path.channel == EvidenceChannel.STEM) "日主" else GanZhiEngine.tenGod(dayMaster, gan)
             return "$label$gan（$role）"
         }
         val source = endpoint(path.sourceLabel, path.sourceGan)

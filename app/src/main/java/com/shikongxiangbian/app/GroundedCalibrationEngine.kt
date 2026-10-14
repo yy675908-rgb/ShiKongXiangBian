@@ -18,11 +18,12 @@ object GroundedCalibrationEngine {
     ): GroundedCalibration {
         val actualDomain = classifyActual(actualEvent)
         val predicted = grounded.judgment["领域"].orEmpty()
-        val confirmed = grounded.events.filter { it.id in confirmedEventIds }
+        val concrete = grounded.events.filter { it.pattern != EventPattern.COMPOSITION }
+        val confirmed = concrete.filter { it.id in confirmedEventIds }
         val result = when {
-            grounded.events.isNotEmpty() && confirmed.isNotEmpty() -> "人工确认"
-            grounded.events.isNotEmpty() -> "待逐项核对"
-            (signature.startsWith("seq2-") || signature.startsWith("seq3-") || signature.startsWith("seq4-") || signature.startsWith("seq5-") || signature.startsWith("seq6-") || signature.startsWith("seq7-") || signature.startsWith("seq8-")) -> "无具体候选"
+            concrete.isNotEmpty() && confirmed.isNotEmpty() -> "人工确认"
+            concrete.isNotEmpty() -> "待逐项核对"
+            (signature.startsWith("seq2-") || signature.startsWith("seq3-") || signature.startsWith("seq4-") || signature.startsWith("seq5-") || signature.startsWith("seq6-") || signature.startsWith("seq7-") || signature.startsWith("seq8-") || signature.startsWith("seq9-")) -> "无具体候选"
             actualDomain == "其他" -> "待积累"
             domainMatches(predicted, actualDomain) -> "命中"
             related(predicted, actualDomain) -> "部分命中"

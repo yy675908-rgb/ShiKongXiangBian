@@ -332,6 +332,8 @@ private fun V6AnalysisPage(
         } else {
             item(key = "currentResult", contentType = "result") {
                 V6Section("当前结果") {
+                    V6AnalysisText("具体事象尚未形成", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    V6AnalysisText("下面是已算出的组合关系与变化，不能把它当成具体事件预测。", fontSize = 16.sp)
                     V6AnalysisText("截至 $appliedDate", fontSize = 15.sp, color = GREEN_V6)
                     val main = grounded.events.filter { it.priority != EventPriority.WATCH }
                     if (main.isEmpty()) {
@@ -375,7 +377,7 @@ private fun V6AnalysisPage(
                     Text("记录实际经过，勾选已发生的事项。", fontSize = 12.sp, color = Color.Gray)
                     OutlinedTextField(value = actualText, onValueChange = onActualText,
                         modifier = Modifier.fillMaxWidth(), minLines = 3, label = { Text("事情、时间、人物与结果") })
-                    if (actualText.isNotBlank()) grounded.events.forEach { event ->
+                    if (actualText.isNotBlank()) grounded.events.filter { it.pattern != EventPattern.COMPOSITION }.forEach { event ->
                         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(
                             value = event.id in confirmedEvents, role = Role.Checkbox,
                             onValueChange = { onConfirmEvent(event.id, it) }), verticalAlignment = Alignment.CenterVertically) {
@@ -518,6 +520,9 @@ private fun V6Layer(layer: LayerAnalysisV5, grounded: GroundedReading) {
             }
             V6AnalysisText(status, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
             V6AnalysisText(AnalysisOutputFormatter.title(entry.event), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            if (entry.event.originalRelations.isNotEmpty()) {
+                V6AnalysisText(entry.event.originalRelations.first(), fontSize = 18.sp)
+            }
             if (entry.change == "暂缓") {
                 V6AnalysisText("此前判断：${entry.event.outcome}")
                 V6AnalysisText("这一步条件不足，暂不作为当前结论。", color = GREEN_V6)
@@ -592,7 +597,7 @@ private fun V6TenGod(tg: GroundedTenGod) {
         V6Label("④ 十神")
         V6AnalysisText(tg.tenGod, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
         Spacer(Modifier.height(7.dp))
-        V6Sub("⑤ 对应的人与事", tg.humanTranslation)
+        V6Sub("⑤ 原始组合关系", tg.humanTranslation)
         V6Label("推导链")
         V6AnalysisText(tg.logic, lineHeight = 20.sp)
     }
@@ -602,7 +607,7 @@ private fun V6TenGod(tg: GroundedTenGod) {
 private fun V6EventLinks(grounded: GroundedReading, shown: List<EventPrediction>, showPending: Boolean, onToggle: () -> Unit) {
     val pending = grounded.events.count { it.priority == EventPriority.WATCH }
     if (pending > 0) TextButton(onClick = onToggle) {
-        V6AnalysisText(if (showPending) "收起待补事项" else "查看待补事项（$pending）")
+        V6AnalysisText(if (showPending) "收起未满足条件的组合" else "查看未满足条件的组合（$pending）")
     }
     val shownIds = shown.map { it.id }.toSet()
     val links = grounded.connections.filter { it.fromId in shownIds && it.toId in shownIds }
@@ -626,7 +631,13 @@ private fun V6EventCard(number: Int, event: EventPrediction, reading: ReadingV5,
     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(12.dp)) {
         Column(Modifier.padding(vertical = 10.dp, horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             V6AnalysisText("$number. ${AnalysisOutputFormatter.title(event)}", fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
-            V6AnalysisText("${event.priority.title} · ${brief.window}", fontSize = 16.sp, color = GREEN_V6)
+            V6AnalysisText("${if (event.pattern == EventPattern.COMPOSITION) "组合分析" else event.priority.title} · ${brief.window}", fontSize = 16.sp, color = GREEN_V6)
+            if (event.originalRelations.isNotEmpty()) {
+                V6AnalysisText("原始关系", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
+                event.originalRelations.take(2).forEach { V6AnalysisText(it, fontSize = 18.sp, lineHeight = 28.sp) }
+                if (event.originalRelations.size > 2) V6AnalysisText("共 ${event.originalRelations.size} 组，展开查看全部。", fontSize = 16.sp)
+                V6AnalysisText("合看作用", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
+            }
             V6AnalysisText(brief.outcome, fontSize = 20.sp, lineHeight = 30.sp)
             val alternatives = allEvents.filter { it.id in event.conflictsWith }
             if (alternatives.isNotEmpty()) V6AnalysisText("其他条件下：${alternatives.joinToString("、") { AnalysisOutputFormatter.title(it) }}", fontSize = 12.sp, color = GREEN_V6)

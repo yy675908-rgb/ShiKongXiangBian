@@ -63,16 +63,15 @@ object EnergyGroundedInterpreter {
             "正印", "偏印" -> "生我之气"
             else -> "关系未定"
         }
-        val domain = SequentialAnalysisEngine.tenGodDomain(tg)
-        val behavior = humanBehavior(tg, key, process)
-        val combinations = focalPath?.let { EnergyConfigurationInterpreter.context(it, reading.field, snapshot.dayMaster) }.orEmpty()
-        val human = if (combinations.isNotEmpty()) combinations.joinToString("\n") else if (key == null) "尚不能确定动态人事落点。" else "$domain：$behavior"
+        val domain = "具体事象未定"
+        val behavior = "保留原始十神，具体事象尚未完成推导"
+        val combinations = parallel.events.flatMap { it.originalRelations }.distinct()
+        val human = combinations.joinToString("\n").ifBlank { "尚无完整组合关系。" }
         val driver = key?.let { "${it.layer}${it.ganZhi}的${if (it.channel == EvidenceChannel.STEM) "天干" else "支中取用"}${it.driverGan}" } ?: "未定"
         val essence = process?.describe()
             ?: "先看原局补给、承载、输出与制约通路；尚无可独立核查的动态作用。"
         val logic = "$driver → $element（$state）→ 相对日主${snapshot.dayMaster}为$relationToDay → $tg。"
-        val image = if (key == null) reading.image else
-            "${key.layer}${key.ganZhi}沿原局主线${SequentialAnalysisEngine.roleName(key.changeRole)}，先作用${key.targetLabel}；${reading.finalSourceState}。"
+        val image = "已列出原始组合和作用变化；具体事象尚未形成。"
         val judgment = linkedMapOf<String, String>()
         judgment["事情类型"] = key?.let { "$behavior；属于传统取象候选，需现实事项承接。" } ?: "暂无动态作用链"
         judgment["领域"] = if (key == null) "领域未定" else "$domain（候选）"
@@ -102,8 +101,8 @@ object EnergyGroundedInterpreter {
         }
         judgment["成立条件"] = condition
         if (parallel.events.isNotEmpty()) {
-            judgment["事情类型"] = parallel.events.joinToString("；") { it.title }
-            judgment["领域"] = parallel.events.map { it.domain.title }.distinct().joinToString("、")
+            judgment["事情类型"] = "尚未形成具体事象"
+            judgment["领域"] = "未定"
             judgment["时间"] = "各层分别给出截至该层的累计判断，时间范围随层级区分。"
             judgment["主动被动"] = "每条作用路径分别看主体输出或外来承接，不能用一个主落点概括全部事项。"
             judgment["内部外部"] = "各项保留各自原局承受点，不能把不同落点统一解释为同一事件。"
@@ -112,40 +111,6 @@ object EnergyGroundedInterpreter {
         return GroundedReading(image, GroundedTenGod(element, nature(element), state, relationToDay, tg, human, logic, essence, combinations), judgment, parallel.events, parallel.connections, stages)
     }
 
-    private fun humanBehavior(tg: String, key: LayerAnalysisV5?, process: EnergyProcess?): String {
-        if (key == null) return "人事状态未定"
-        if (process != null && !process.originReady) return when (tg) {
-            "食神", "伤官" -> "主体供给与续接待补，表达或产出能否落实仍待承接"
-            "正财", "偏财" -> "实际取用方承载待检，不直接判资源已取得或支出"
-            else -> "实际施生/施制端承载待补，人事落实条件未齐"
-        }
-        // Constraint belongs to the selected energy, not automatically to the person.
-        if (key.sourceRestricted || !key.sourceAvailable || key.relationKind == EnergyRelation.CONTROLLED_BY) {
-            return when (tg) {
-                "比肩", "劫财" -> "同类行动或协作的展开条件受限"
-                "食神", "伤官" -> "输出条件待补或执行受牵，先观察延迟与返工"
-                "正财", "偏财" -> "资源对象的可用性待检；不能直接判破财"
-                "正官", "七杀" -> "外来要求的执行通路受牵，不等同主体压力增大"
-                "正印", "偏印" -> "补给与信息的落实通路待检"
-                else -> "当前条件尚未充分成立"
-            }
-        }
-        if ("日主自合" in key.techniques) {
-            return when (tg) {
-                "正官", "七杀" -> "与主体形成约定或责任承接候选，落实仍看旁干与根源"
-                "正财", "偏财" -> "资源对象与主体直接牵连，观察实际取用和约定条件"
-                else -> "直接与主体相合，不先按合去或受阻解释"
-            }
-        }
-        return when (tg) {
-            "比肩", "劫财" -> "同类参与条件具备，协作还是竞争取决于资源与目标"
-            "食神", "伤官" -> "表达或产出具备承接条件；是否形成成果仍需后续落实"
-            "正财", "偏财" -> "资源事项进入可取用的观察范围，取得还是支出尚未确定"
-            "正官", "七杀" -> "外来要求具备作用条件，可能落实为任务或责任"
-            "正印", "偏印" -> "信息或支持具备补给条件，是否实际获益仍看主体承接"
-            else -> "具体领域未定"
-        }
-    }
     internal fun nature(element: String): String = when (element) {
         "木" -> "生发、条达、伸展、疏泄、连接"
         "火" -> "温热、显化、上炎、扩散、照见"

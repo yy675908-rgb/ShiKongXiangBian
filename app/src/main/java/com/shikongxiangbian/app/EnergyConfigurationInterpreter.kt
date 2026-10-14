@@ -51,14 +51,14 @@ object EnergyConfigurationInterpreter {
         val resource = control.getValue(dayElement)
         val authority = control.entries.first { it.value == dayElement }.key
         val definitions = listOf(
-            Triple("补给承接输出", listOf(supply, dayElement, output), "支持需经主体转为表达或交付，主体同时有耗用。"),
-            Triple("输出转入资源", listOf(dayElement, output, resource), "产出可接资源事项，仍需交易或实际接收，不能直接断到账。"),
-            Triple("制约经补给转接", listOf(authority, supply, dayElement), "外来要求可经信息、资格或支持转为主体承接；转接未齐时仍保留直接约束。"),
-            Triple("资源推动要求", listOf(resource, authority, dayElement), "资源可推动任务与标准，取得资源也可能伴随责任，不能只作财来之喜。"),
-            Triple("输出制约要求", listOf(output, authority), "表达、方案或执行可调整外来要求，施制亦有耗用，不预设冲突或已制住。"),
-            Triple("补给制约输出", listOf(supply, output), "信息、保护或支持也可限制自主表达，不能把印一律当帮助，也不直接断夺食。"),
-            Triple("同类分用资源", listOf(dayElement, resource), "同类可共同调配也可分用资源；协作还是争用须看目标、供给与分配约定。"),
-            Triple("资源制约补给", listOf(resource, supply), "实际资源与支持条件可能互相掣肘，补给能否续接需复查，不直接断财坏印。")
+            Triple("补给承接输出", listOf(supply, dayElement, output), "印生日主，日主生食伤；须同时看受生与泄气。"),
+            Triple("输出转入资源", listOf(dayElement, output, resource), "日主生食伤，食伤生财；须比较日主受泄与财受生。"),
+            Triple("制约经补给转接", listOf(authority, supply, dayElement), "官杀生印，印生日主；还须比较官杀对日主的直接相克。"),
+            Triple("资源推动要求", listOf(resource, authority, dayElement), "财生官杀，官杀克日主；须把相生与相克一起看。"),
+            Triple("输出制约要求", listOf(output, authority), "食伤克官杀；须比较双方条件，不直接判已制伏。"),
+            Triple("补给制约输出", listOf(supply, output), "印克食伤，同时可能生日主；须合看生克，不直接断夺食。"),
+            Triple("同类分用资源", listOf(dayElement, resource), "比劫克财；同类存在不等于另有参与者。"),
+            Triple("资源制约补给", listOf(resource, supply), "财克印；须比较印的根气与生扶，不直接判印已受损。")
         )
         return EnergyFieldReading(definitions.map { (name, route, meaning) ->
             // Only exposed stems form this explicit route. Hidden channels remain in ImpactPath.
@@ -123,3 +123,4 @@ object EnergyConfigurationInterpreter {
                 .map { "${it.endpoints.first().text}对${it.endpoints.last().text}另有制约候选，需比较补给与制约谁能落实" } }.distinct()
     }
 }
+
