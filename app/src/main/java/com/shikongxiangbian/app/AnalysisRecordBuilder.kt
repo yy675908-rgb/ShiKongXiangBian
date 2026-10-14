@@ -40,6 +40,14 @@ object AnalysisRecordBuilder {
                 appendLine("依据：${layer.technical.joinToString("；")}")
                 appendLine("成立条件：${layer.condition}")
             }
+            grounded.stages.forEach { stage ->
+                appendLine("【${stage.layer}${stage.ganZhi}累计结果】")
+                stage.entries.forEach { entry ->
+                    appendLine("${entry.change}｜${entry.event.title}｜${entry.event.outcome}")
+                    appendLine("依据：${entry.event.keyBasis}")
+                    appendLine("条件：${entry.event.priorityReason}")
+                }
+            }
             appendLine("【气势】")
             appendLine(reading.qi.joinToString("；"))
             appendLine("【取象】")

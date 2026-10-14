@@ -104,10 +104,10 @@ object EnergyGroundedInterpreter {
         if (parallel.events.isNotEmpty()) {
             judgment["事情类型"] = parallel.events.joinToString("；") { it.title }
             judgment["领域"] = parallel.events.map { it.domain.title }.distinct().joinToString("、")
-            judgment["时间"] = "各项分别按自己的承接层与日/时作用观察，见逐项应事。"
+            judgment["时间"] = "各层分别给出截至该层的累计判断，时间范围随层级区分。"
             judgment["主动被动"] = "每条作用路径分别看主体输出或外来承接，不能用一个主落点概括全部事项。"
             judgment["内部外部"] = "各项保留各自原局承受点，不能把不同落点统一解释为同一事件。"
-            judgment["发展阶段"] = "可能并行；共享依据的事项仅在前项发生且需处理时接续。"
+            judgment["发展阶段"] = "前层结果经本层重新检验，分别标记新增、延续、调整或暂缓。"
         }
         return GroundedReading(image, GroundedTenGod(element, nature(element), state, relationToDay, tg, human, logic, essence, combinations), judgment, parallel.events, parallel.connections, stages)
     }

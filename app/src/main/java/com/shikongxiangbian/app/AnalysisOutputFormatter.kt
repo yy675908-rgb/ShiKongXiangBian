@@ -39,6 +39,7 @@ object AnalysisOutputFormatter {
                 !process.originReady -> "实际作用方承载待补"
                 path.hiddenTarget && !energy.target.expressed -> "支中落点尚未显露"
                 event.direction == EventDirection.SUPPORT && energy.target.restricted -> "承受端受牵"
+                event.evaluatedAt.isNotBlank() -> "本层作用条件待补"
                 event.latestLayer !in setOf("流日", "流时") -> "仍待日/时承接"
                 else -> "通路条件待补"
             }
@@ -135,7 +136,7 @@ object AnalysisOutputFormatter {
         }
         appendLine("【当前累计结果】")
         val main = grounded.events.filter { it.priority != EventPriority.WATCH }
-        if (main.isEmpty()) appendLine("目前没有条件较齐的近期事项。")
+        if (main.isEmpty()) appendLine("当前累计判断仍有条件待确认，见各层结果。")
         main.forEachIndexed { index, e ->
             val brief = event(e, reading)
             appendLine("${index + 1}. ${title(e)}｜${brief.window}")
