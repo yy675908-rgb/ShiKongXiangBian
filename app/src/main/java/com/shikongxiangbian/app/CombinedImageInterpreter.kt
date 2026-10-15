@@ -7,7 +7,8 @@ object CombinedImageInterpreter {
         val bindings: List<ConfigurationBinding>,
         val counterBindings: List<ConfigurationBinding>,
         val usable: Boolean,
-        val changed: Boolean
+        val changed: Boolean,
+        val changes: List<String> = emptyList()
     )
 
     private fun signature(binding: ConfigurationBinding) = binding.endpoints.map { it.key }
@@ -35,21 +36,50 @@ object CombinedImageInterpreter {
         }
     }
 
+    // Compare the actual surrounding stems too. An unchanged triple can receive a new
+    // source or a new controller; checking only its three members loses that change.
+    private fun influences(config: EnergyConfiguration, field: EnergyFieldReading): List<ConfigurationBinding> {
+        val members = config.bindings.flatMap { it.endpoints }.distinctBy { it.key }
+        return field.endpoints.flatMap { from -> members.filter { to ->
+            from.key != to.key && (generate[from.element] == to.element || control[from.element] == to.element)
+        }.map { to -> ConfigurationBinding(listOf(from, to)) } }
+    }
+
+    private fun delta(old: List<ConfigurationBinding>, now: List<ConfigurationBinding>): List<String> {
+        val previous = old.flatMap { it.endpoints }.associateBy { it.key }
+        val current = now.flatMap { it.endpoints }.associateBy { it.key }
+        return buildList {
+            current.forEach { (key, node) ->
+                val prior = previous[key]
+                when {
+                    prior == null -> add("新增${node.text}${node.element}")
+                    !prior.state.restricted && node.state.restricted -> add("${node.text}本层受牵制")
+                    prior.state.restricted && !node.state.restricted -> add("${node.text}原有牵制解除")
+                    prior.state.available != node.state.available -> add("${node.text}" + if (node.state.available) "本层具备作用条件" else "本层作用条件不足")
+                    prior.state.rooted != node.state.rooted -> add("${node.text}" + if (node.state.rooted) "本层得根" else "本层失去根气")
+                    prior.state.expressed != node.state.expressed -> add("${node.text}" + if (node.state.expressed) "本层透出" else "本层不再透出")
+                }
+            }
+            previous.filterKeys { it !in current }.values.forEach { add("${it.text}退出这组作用") }
+        }.distinct()
+    }
+
     fun assess(field: EnergyFieldReading, before: EnergyFieldReading): List<Assessment> {
         val current = combinations(field)
         val previous = combinations(before)
         return current.filter { it.bindings.isNotEmpty() }.map { config ->
             val keys = config.bindings.flatMap { it.endpoints }.map { it.key }.toSet()
-            // Same actual stem, not another stem sharing its element.
             val counters = current.filter { other ->
                 other !== config && other.relations.contains(EnergyRelation.CONTROLS)
             }.flatMap { other -> other.bindings.filter { binding ->
                 binding.endpoints.last().key in keys && binding.endpoints.first().ready
             } }.distinctBy { signature(it) }
             val old = previous.firstOrNull { it.elements == config.elements && it.relations == config.relations }
-            val oldKeys = old?.bindings.orEmpty().map { state(it) }.toSet()
+            val oldContext = old?.let { it.bindings + influences(it, before) }.orEmpty()
+            val context = config.bindings + influences(config, field)
             Assessment(config, config.bindings, counters, config.ready,
-                config.bindings.map { state(it) }.toSet() != oldKeys)
+                context.map { state(it) }.toSet() != oldContext.map { state(it) }.toSet(),
+                delta(oldContext, context))
         }
     }
 
@@ -96,7 +126,9 @@ object CombinedImageInterpreter {
             } + if (counters.isNotEmpty()) "同时还有${counters.joinToString("；")}；这些制约也须纳入比较。" else ""
             // A relationship/flow assessment is not passed off as a completed human-event image.
             val image = "尚未形成可支持具体事情的取象。"
-            val changed = if (a.changed) "本层改变了这组干支的组成或作用条件。" else "这组干支的组成和作用条件与前层相同。"
+            val changed = if (a.changes.isNotEmpty()) a.changes.joinToString("；") + "。"
+                else if (a.changed) "本层改变了组合之间的作用关系。"
+                else "本层未改变这组关系及其生扶、克制条件。"
             val title = c.elements.zipWithNext().mapIndexed { i, (from, to) ->
                 from + (if (c.relations[i] == EnergyRelation.CONTROLS) "克" else "生") + to
             }.joinToString("，")
@@ -117,7 +149,7 @@ object CombinedImageInterpreter {
                 energyProcess = listOf(flow), hasUsableWindow = false,
                 configurationContext = original, configurationLimits = limits + counters,
                 currentChange = changed, outcome = flow, evaluatedAt = scope,
-                originalRelations = original, imageStatus = image
+                originalRelations = original, imageStatus = image, compositionChanged = a.changed
             )
         }
         return MultiEventReading(events, emptyList())

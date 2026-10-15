@@ -40,7 +40,8 @@ data class EventPrediction(
     val outcome: String = "",
     val evaluatedAt: String = "",
     val originalRelations: List<String> = emptyList(),
-    val imageStatus: String = ""
+    val imageStatus: String = "",
+    val compositionChanged: Boolean = false
 )
 
 data class EventConnection(val fromId: String, val toId: String, val description: String, val condition: String)

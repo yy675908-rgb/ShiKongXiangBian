@@ -26,7 +26,8 @@ object CumulativeEventInterpreter {
                     wasReady && !ready -> "暂缓"
                     !wasReady && ready -> "条件转好"
                     event.pattern == EventPattern.COMPOSITION && before != null &&
-                        (before.outcome != event.outcome || before.keyBasis != event.keyBasis) -> "调整"
+                        (before.outcome != event.outcome || before.keyBasis != event.keyBasis ||
+                            event.compositionChanged) -> "调整"
                     !ready -> "仍待定"
                     before.outcome != event.outcome || before.keyBasis != event.keyBasis || before.priority != event.priority -> "调整"
                     else -> "延续"

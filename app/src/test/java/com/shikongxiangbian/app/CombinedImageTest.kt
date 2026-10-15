@@ -51,4 +51,32 @@ class CombinedImageTest {
         val result = GroundedCalibrationEngine.calibrate(r.signature, g, "收到资料", "", g.events.map { it.id }.toSet())
         assertEquals("无具体候选", result.result)
     }
+    @Test fun externalControllerChangesAnOtherwiseIdenticalChain() {
+        val before = EnergyConfigurationInterpreter.analyze("木", nodes)
+        val after = EnergyConfigurationInterpreter.analyze("木", nodes + e("流年", "戊", "土"))
+        val result = CombinedImageInterpreter.assess(after, before).single { it.configuration.elements == listOf("金", "水", "木") }
+        assertTrue(result.changed)
+        assertTrue(result.changes.contains("新增流年戊土"))
+        assertTrue(result.counterBindings.any { it.endpoints.first().gan == "戊" && it.endpoints.last().gan == "壬" })
+    }
+
+    @Test fun externalSupportChangesAControlPair() {
+        val base = listOf(e("年柱", "庚", "金"), e("日柱", "甲", "木"))
+        val before = EnergyConfigurationInterpreter.analyze("木", base)
+        val after = EnergyConfigurationInterpreter.analyze("木", base + e("流年", "壬", "水"))
+        val result = CombinedImageInterpreter.assess(after, before).single { it.configuration.elements == listOf("金", "木") }
+        assertTrue(result.changed)
+        assertTrue(result.changes.contains("新增流年壬水"))
+    }
+
+    @Test fun releasingAnExternalControllerIsTrackedWithoutRewritingThePast() {
+        val before = EnergyConfigurationInterpreter.analyze("木", nodes + e("流年", "戊", "土", true))
+        val after = EnergyConfigurationInterpreter.analyze("木", nodes + e("流年", "戊", "土"))
+        val result = CombinedImageInterpreter.assess(after, before).single { it.configuration.elements == listOf("金", "水", "木") }
+        assertTrue(result.changed)
+        assertTrue(result.changes.contains("流年戊原有牵制解除"))
+        assertFalse(CombinedImageInterpreter.assess(before, before).any { it.changed })
+        assertTrue(before.endpoints.last().state.restricted)
+        assertFalse(CombinedImageInterpreter.assess(after, after).any { it.changed })
+    }
 }
