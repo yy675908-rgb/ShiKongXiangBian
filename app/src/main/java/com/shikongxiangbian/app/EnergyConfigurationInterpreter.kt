@@ -1,6 +1,7 @@
 package com.shikongxiangbian.app
 
-data class EnergyEndpoint(val key: String, val label: String, val gan: String, val element: String, val state: EnergyAvailability) {
+data class EnergyEndpoint(val key: String, val label: String, val gan: String, val element: String, val state: EnergyAvailability,
+    val basis: EndpointBasis? = null) {
     val ready: Boolean get() = state.expressed && state.available && !state.restricted
     val text: String get() = label + gan
 }

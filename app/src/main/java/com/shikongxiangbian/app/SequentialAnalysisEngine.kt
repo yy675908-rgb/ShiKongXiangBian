@@ -76,7 +76,16 @@ object SequentialAnalysisEngine {
         }
         fun configurations(dayElement: String): EnergyFieldReading = EnergyConfigurationInterpreter.analyze(dayElement,
             nodes.map { node -> EnergyEndpoint("${node.label}:${node.gan}:${EvidenceChannel.STEM}", node.label, node.gan,
-                node.element, carrier(node, node.gan, EvidenceChannel.STEM)) })
+                node.element, carrier(node, node.gan, EvidenceChannel.STEM), basis(node)) })
+        fun basis(node: Node): EndpointBasis = EndpointBasis(
+            natalMonth, currentMonth, seasonRelation(node.element, natalMonth), seasonRelation(node.element, currentMonth),
+            state(node.element).roots.map { root -> RootEvidence(root.node.label, root.node.zhi, root.gan,
+                root.main, root.node.natal, nodes.filter { other ->
+                    other.label != root.node.label && pair(root.node.zhi, other.zhi) in chong
+                }.map { it.text }.toSet()) },
+            nodes.filter { it.label != node.label && pair(node.gan, it.gan) in stemHe }.map { it.text }.toSet(),
+            nodes.map { PhaseEvidence(it.label, it.zhi, GanZhiEngine.changSheng(node.gan, it.zhi)) }
+        )
         fun append(n: Node): Field = copy(nodes = nodes + n, currentMonth = if (n.label == "流月") n.zhi else currentMonth)
         fun routes(element: String): String {
             val source = generate.entries.first { it.value == element }.key

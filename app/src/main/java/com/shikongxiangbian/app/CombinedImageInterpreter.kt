@@ -13,7 +13,7 @@ object CombinedImageInterpreter {
 
     private fun signature(binding: ConfigurationBinding) = binding.endpoints.map { it.key }
     private fun state(binding: ConfigurationBinding) = binding.endpoints.map {
-        listOf(it.key, it.state.expressed, it.state.rooted, it.state.available, it.state.restricted)
+        listOf(it.key, it.state.expressed, it.state.rooted, it.state.available, it.state.restricted, it.basis)
     }
 
     private val generate = mapOf("木" to "火", "火" to "土", "土" to "金", "金" to "水", "水" to "木")
@@ -36,33 +36,13 @@ object CombinedImageInterpreter {
         }
     }
 
-    // Compare the actual surrounding stems too. An unchanged triple can receive a new
-    // source or a new controller; checking only its three members loses that change.
     private fun influences(config: EnergyConfiguration, field: EnergyFieldReading): List<ConfigurationBinding> {
-        val members = config.bindings.flatMap { it.endpoints }.distinctBy { it.key }
-        return field.endpoints.flatMap { from -> members.filter { to ->
-            from.key != to.key && (generate[from.element] == to.element || control[from.element] == to.element)
-        }.map { to -> ConfigurationBinding(listOf(from, to)) } }
+        val members = config.bindings.flatMap { it.endpoints }.map { it.key }.toSet()
+        return InteractionAnalysis.context(field, members).map { ConfigurationBinding(listOf(it.source, it.target)) }
     }
 
-    private fun delta(old: List<ConfigurationBinding>, now: List<ConfigurationBinding>): List<String> {
-        val previous = old.flatMap { it.endpoints }.associateBy { it.key }
-        val current = now.flatMap { it.endpoints }.associateBy { it.key }
-        return buildList {
-            current.forEach { (key, node) ->
-                val prior = previous[key]
-                when {
-                    prior == null -> add("新增${node.text}${node.element}")
-                    !prior.state.restricted && node.state.restricted -> add("${node.text}本层受牵制")
-                    prior.state.restricted && !node.state.restricted -> add("${node.text}原有牵制解除")
-                    prior.state.available != node.state.available -> add("${node.text}" + if (node.state.available) "本层具备作用条件" else "本层作用条件不足")
-                    prior.state.rooted != node.state.rooted -> add("${node.text}" + if (node.state.rooted) "本层得根" else "本层失去根气")
-                    prior.state.expressed != node.state.expressed -> add("${node.text}" + if (node.state.expressed) "本层透出" else "本层不再透出")
-                }
-            }
-            previous.filterKeys { it !in current }.values.forEach { add("${it.text}退出这组作用") }
-        }.distinct()
-    }
+    private fun delta(old: List<ConfigurationBinding>, now: List<ConfigurationBinding>): List<String> =
+        InteractionAnalysis.changes(old.flatMap { it.endpoints }, now.flatMap { it.endpoints })
 
     fun assess(field: EnergyFieldReading, before: EnergyFieldReading): List<Assessment> {
         val current = combinations(field)
@@ -108,22 +88,17 @@ object CombinedImageInterpreter {
                 "${p.sourceLabel}:${p.sourceGan}:${p.channel}" in keys &&
                     "${p.targetLabel}:${p.targetGan}:${p.channel}" in keys
             }
-            val active = a.bindings.filter { it.ready }
             val original = a.bindings.map { route(c, it, reading.dayMaster) }.distinct()
             val limits = a.bindings.filterNot { it.ready }.flatMap { limitation(it).split("；") }.filter { it.isNotBlank() }.distinct()
             val counters = a.counterBindings.map { b ->
                 "${stem(b.endpoints.first(), reading.dayMaster)}克${stem(b.endpoints.last(), reading.dayMaster)}"
             }.distinct()
-            val flow = when {
-                !a.usable -> "${limits.joinToString("；")}。这组关系尚不能按畅通或制伏判断。"
-                c.relations.all { it == EnergyRelation.GENERATES } -> {
-                    val middle = active.map { stem(it.endpoints[1], reading.dayMaster) }.distinct().joinToString("、")
-                    "前一行生中间一行，中间一行再生后一行；$middle 同时受生、泄气，须把前后两段一起看。"
-                }
-                c.relations.last() == EnergyRelation.CONTROLS && c.relations.size > 1 ->
-                    "前段相生，生起的五行又克后一行；增加生扶也会增加制约，不能只看前段相生。"
-                else -> "这组五行存在相克；克的一方有根气或生扶，尚未据此确定另一方已经受损或被制伏。"
-            } + if (counters.isNotEmpty()) "同时还有${counters.joinToString("；")}；这些制约也须纳入比较。" else ""
+            val reviews = a.bindings.map { InteractionAnalysis.review(it, reading.field) }
+            val flow = reviews.map { it.conclusion }.distinct().joinToString("\n")
+            val basis = a.bindings.flatMap { it.endpoints }.distinctBy { it.key }.map { node ->
+                node.basis?.describe(node) ?: "${node.text}：${node.state.description}"
+            }
+            val dependencies = reviews.flatMap { it.dependencies }.distinct()
             // A relationship/flow assessment is not passed off as a completed human-event image.
             val image = "尚未形成可支持具体事情的取象。"
             val changed = if (a.changes.isNotEmpty()) a.changes.joinToString("；") + "。"
@@ -139,15 +114,15 @@ object CombinedImageInterpreter {
                 priority = if (a.usable) EventPriority.POSSIBLE else EventPriority.WATCH,
                 priorityReason = "仅记录组合及作用条件，尚未完成事象推导。",
                 timeWindow = when(scope) { "大运" -> "本步大运"; "流年" -> "本年"; "流月" -> "本月"; "流日" -> "当日"; else -> "本时辰" },
-                condition = "需继续比较原局需要、五行间作用强弱及生克先后，才能形成事象判断。",
+                condition = dependencies.joinToString("；").ifEmpty { "已比较结构与作用路径；净作用强弱、人物对应及具体取象尚未完成。" },
                 invalidIf = "组合中的根气、生扶或冲合条件改变时，重新分析整组关系。",
-                evidence = original + limits + counters, pathIds = paths.map { it.id }.toSet(),
+                evidence = original + basis + limits + counters + reviews.flatMap { it.evidence }.distinct(), pathIds = paths.map { it.id }.toSet(),
                 natalAnchors = paths.flatMap { it.natalAnchors }.toSet(),
                 tenGods = a.bindings.flatMap { it.endpoints }.filter { it.label != "日柱" }.map { GanZhiEngine.tenGod(reading.dayMaster, it.gan) }.toSet(),
                 latestLayer = scope, natalContext = listOf(reading.natal.climate, reading.natal.energyFlow),
-                development = original, endpointKeys = keys, keyBasis = original.joinToString("\n"),
-                energyProcess = listOf(flow), hasUsableWindow = false,
-                configurationContext = original, configurationLimits = limits + counters,
+                development = original, endpointKeys = keys, keyBasis = (original + basis).joinToString("\n"),
+                energyProcess = reviews.map { it.conclusion }, hasUsableWindow = false,
+                configurationContext = basis + reviews.flatMap { it.evidence }.distinct(), configurationLimits = limits + dependencies,
                 currentChange = changed, outcome = flow, evaluatedAt = scope,
                 originalRelations = original, imageStatus = image, compositionChanged = a.changed
             )
