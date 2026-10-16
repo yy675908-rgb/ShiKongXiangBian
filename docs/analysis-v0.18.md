@@ -1,5 +1,7 @@
 # v0.18 work in progress — preserve structured inputs and stop unsupported event substitution
 
+> 历史实现记录：其中的应事理论已由[当前模块](analysis-theory.md)替换，不再作为有效规则。保留本文仅用于追溯实现与测试。
+
 The active cumulative interpreter now calls CombinedImageInterpreter, not the legacy per-path event mapper. Each layer uses its own accumulated field, retaining exact stem identities, elements, ten gods and source layer. Configuration text is never an input to the new assessment.
 
 All instantiated combinations are assessed with exact-node competing controls. An unrestricted stem of the same element cannot substitute for the restricted intermediate stem. Original relations precede explanations in the page and saved record. Prior-prefix snapshots remain immutable. Composition results cannot be confirmed as real-world events in calibration.

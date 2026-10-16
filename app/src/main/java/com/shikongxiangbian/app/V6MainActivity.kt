@@ -475,17 +475,38 @@ private fun V6Natal(natal: NatalAnalysisV5) {
 
 @Composable
 private fun V6Pipeline() {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    V6Section("分析顺序与应事链", compact = true) {
-        V6AnalysisText("原局 → 大运 → 流年 → 流月 → 流日 → 流时", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GREEN_V6)
-        TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(0.dp)) {
-            V6AnalysisText(if (expanded) "收起方法" else "查看分析方法")
+    V6Section("分析理论", compact = true) {
+        Text("原局 → 大运 → 流年 → 流月 → 流日 → 流时", fontSize = 16.sp, lineHeight = 24.sp, color = GREEN_V6)
+        Text("各层承接此前基础，并形成自己的判断。", fontSize = 16.sp, lineHeight = 24.sp)
+        V6TheoryModule("events", "应事 · 应什么事")
+        V6TheoryModule("people", "人物对应 · 对应的是谁")
+        Text("这里记录分析方法；完整的自动应事推导尚未实现。", fontSize = 16.sp, lineHeight = 24.sp, color = Color.Gray)
+    }
+}
+
+@Composable
+private fun V6TheoryModule(id: String, title: String) {
+    var expanded by rememberSaveable(id) { mutableStateOf(false) }
+    val context = LocalContext.current
+    TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(vertical = 8.dp)) {
+        Text("${if (expanded) "收起" else "查看"} $title", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+    }
+    if (expanded) {
+        val paragraphs = remember(context, id) {
+            context.assets.open("analysis-theory/$id.md").bufferedReader(Charsets.UTF_8).use { it.readText() }
+                .split("\n\n").map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("# ") }
         }
-        if (expanded) {
-            V6AnalysisText("每层先看新加入的力量怎样生扶、制约或耗用原局，气势怎样改变，再看合冲刑害破。", lineHeight = 20.sp)
-            Spacer(Modifier.height(6.dp))
-            V6AnalysisText("应事链：时空 ＋ 能量 ＋ 气象 ＋ 主客体用 ＋ 十神 → 应事", fontWeight = FontWeight.SemiBold)
-            V6AnalysisText("先看谁生谁、谁制谁，能否起作用及有何耗用；再结合十神判断可能发生的事。", fontSize = 12.sp, color = Color.Gray)
+        paragraphs.forEach { paragraph ->
+            val heading = paragraph.startsWith("## ")
+            // Theory must retain its original terms, without AnalysisLanguage substitutions.
+            Text(
+                paragraph.removePrefix("## "),
+                modifier = Modifier.padding(bottom = 12.dp),
+                fontSize = if (heading) 18.sp else 16.sp,
+                lineHeight = 26.sp,
+                fontWeight = if (heading) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (heading) GREEN_V6 else Color.Unspecified
+            )
         }
     }
 }
