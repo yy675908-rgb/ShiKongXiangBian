@@ -236,6 +236,7 @@ private fun V7AnalysisPage(
             item { V7TimeSpace(snapshot, scope) }
             item { V7Section("核心判断") { Text(reading.conclusion, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold) } }
             item { V7Events(reading.events) }
+            item { V7Scenes(reading.scenes) }
             item { V7Natal(reading.natal) }
             item { V7Layers(reading.layers) }
             item { V7Palaces(reading.palaces) }
@@ -306,6 +307,19 @@ private fun V7Events(events: List<EventHypothesis>) {
         if (events.isEmpty()) Text("当前结构不足以形成稳定的综合事件。")
         events.forEachIndexed { index, event ->
             V7Sub("${index + 1}. ${event.title}｜${event.level}", "${event.description}\n依据：${event.basis}")
+        }
+    }
+}
+
+@Composable
+private fun V7Scenes(scenes: List<SceneTranslation>) {
+    V7Section("场景翻译 · 结构到现实") {
+        if (scenes.isEmpty()) Text("当前结构不足以继续翻译为具体场景。")
+        scenes.forEachIndexed { index, scene ->
+            V7Sub(
+                "${index + 1}. ${scene.title}｜${scene.level}",
+                "阶段：${scene.phase}\n路径：${scene.path}\n候选：${scene.candidates.joinToString("；")}\n边界：${scene.boundary}"
+            )
         }
     }
 }
@@ -414,6 +428,7 @@ private object V7RecordBuilder {
         }
         appendLine("【宫位】${reading.palaces.joinToString("；") { "${it.pillar}${it.level}" }}")
         appendLine("【综合应事】${reading.events.joinToString("；") { "${it.title}${it.level}" }}")
+        appendLine("【场景翻译】${reading.scenes.joinToString("；") { "${it.title}${it.level}｜${it.phase}｜${it.candidates.joinToString("、")}" }}")
         appendLine("【领域】${reading.domains.joinToString("；") { "${it.domain}${it.level}" }}")
         appendLine("【预测前记忆】${reading.memoryBefore}")
         appendLine("§ACTUAL")

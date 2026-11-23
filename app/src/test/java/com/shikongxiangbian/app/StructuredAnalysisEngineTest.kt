@@ -74,6 +74,14 @@ class StructuredAnalysisEngineTest {
     }
 
     @Test
+    fun calibrationKeepsPeerConversationAlongsideAcademicTopic() {
+        val domains = StructuredCalibrationEngine.classifyActual("跟师妹聊课题和唠嗑")
+
+        assertTrue(domains.contains("学业工作"))
+        assertTrue(domains.contains("人际关系"))
+    }
+
+    @Test
     fun dingYouFindsOneStageTransitionBehindSeveralPalaces() {
         val reading = StructuredAnalysisEngine.analyze(
             snapshot("丁酉", daYun = "己卯"),
@@ -82,9 +90,9 @@ class StructuredAnalysisEngineTest {
             ""
         )
 
-        assertEquals("环境与圈层迁移", reading.events.first().title)
+        assertEquals("外部环境与圈层重组", reading.events.first().title)
         assertTrue(reading.events.any { it.title == "教育、职业或正式身份转换" })
-        assertTrue(reading.events.any { it.title == "生活随环境改变" })
+        assertTrue(reading.events.any { it.title == "外部关系与日常安排并行调整" })
     }
 
     @Test
@@ -103,6 +111,81 @@ class StructuredAnalysisEngineTest {
             listOf("教育、职业或正式身份转换", "感情关系建立或重组"),
             reading.events.take(2).map { it.title }
         )
+    }
+
+    @Test
+    fun hourScopeAddsPeerInformationConversationAsConditionalCandidate() {
+        val reading = StructuredAnalysisEngine.analyze(
+            snapshot("丙午", finer = listOf("己亥", "辛丑", "丙申"), daYun = "庚辰"),
+            LocalDateTime.of(2026, 11, 23, 16, 0),
+            AnalysisScope.HOUR,
+            ""
+        )
+        val conversation = reading.events.single { it.title == "同辈交流与信息讨论" }
+
+        assertEquals("条件性", conversation.level)
+        assertTrue(conversation.description.contains("学习、工作或专业事项"))
+        assertTrue(conversation.description.contains("日常闲谈"))
+        assertFalse(reading.events.first().title == conversation.title)
+    }
+
+    @Test
+    fun hourScopeDoesNotForcePeerConversationWithoutVisiblePeerTheme() {
+        val reading = StructuredAnalysisEngine.analyze(
+            snapshot("丙午", finer = listOf("癸亥", "辛丑", "丙申"), daYun = "庚辰"),
+            LocalDateTime.of(2026, 11, 23, 16, 0),
+            AnalysisScope.HOUR,
+            ""
+        )
+
+        assertFalse(reading.events.any { it.title == "同辈交流与信息讨论" })
+    }
+
+    @Test
+    fun yiWeiAllowsInstitutionalMoveCandidateFromMonthAndDayHardHits() {
+        val reading = StructuredAnalysisEngine.analyze(
+            snapshot("丙午", finer = listOf("乙未"), daYun = "庚辰"),
+            LocalDateTime.of(2026, 7, 20, 12, 0),
+            AnalysisScope.MONTH,
+            ""
+        )
+        val scene = reading.scenes.first { it.title == "制度环境与团队安排" }
+
+        assertEquals("强", scene.level)
+        assertEquals("制度或生活结构触发", scene.phase)
+        assertTrue(scene.candidates.any { it.contains("强候选") && it.contains("轮转") && it.contains("地点变化") })
+        assertTrue(scene.boundary.contains("不能仅凭年柱受冲"))
+    }
+
+    @Test
+    fun bingShenCarriesExistingMatterWithoutInventingAStartOrMove() {
+        val reading = StructuredAnalysisEngine.analyze(
+            snapshot("丙午", finer = listOf("丙申"), daYun = "庚辰"),
+            LocalDateTime.of(2026, 8, 20, 12, 0),
+            AnalysisScope.MONTH,
+            ""
+        )
+
+        assertEquals("本层以承接为主", reading.scenes.single().title)
+        assertTrue(reading.scenes.single().boundary.contains("本层单独不足以确定换环境"))
+        assertFalse(reading.events.any { it.title == "教育、职业或正式身份转换" })
+    }
+
+    @Test
+    fun dingYouKeepsYearPillarChangeSeparateFromLocationJudgment() {
+        val reading = StructuredAnalysisEngine.analyze(
+            snapshot("丙午", finer = listOf("丁酉"), daYun = "庚辰"),
+            LocalDateTime.of(2026, 9, 20, 12, 0),
+            AnalysisScope.MONTH,
+            ""
+        )
+        val institution = reading.scenes.first { it.title == "制度环境与团队安排" }
+        val external = reading.scenes.first { it.title == "外部环境与圈层关系" }
+
+        assertEquals("既有安排内的协调", institution.phase)
+        assertTrue(institution.candidates.any { it.contains("低位候选") && it.contains("轮转") })
+        assertTrue(institution.boundary.contains("不能单独据此判断"))
+        assertTrue(external.boundary.contains("不用于判断是否搬家"))
     }
 
     private fun analyze(year: String): StructuredReading = StructuredAnalysisEngine.analyze(

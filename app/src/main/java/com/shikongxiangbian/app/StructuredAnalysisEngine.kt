@@ -64,6 +64,15 @@ data class EventHypothesis(
     val basis: String
 )
 
+data class SceneTranslation(
+    val title: String,
+    val level: String,
+    val phase: String,
+    val path: String,
+    val candidates: List<String>,
+    val boundary: String
+)
+
 data class StructuredReading(
     val scope: AnalysisScope,
     val natal: NatalBaseline,
@@ -74,6 +83,7 @@ data class StructuredReading(
     val palaces: List<PalaceActivation>,
     val domains: List<DomainCandidate>,
     val events: List<EventHypothesis>,
+    val scenes: List<SceneTranslation>,
     val judgment: LinkedHashMap<String, String>,
     val signature: String,
     val memoryBefore: String
@@ -175,7 +185,8 @@ object StructuredAnalysisEngine {
 
         val palaces = buildPalaces(layers)
         val domains = buildDomains(snapshot, layers, palaces)
-        val events = buildEventHypotheses(snapshot, layers, palaces)
+        val events = buildEventHypotheses(snapshot, layers)
+        val scenes = buildSceneTranslations(snapshot, layers)
         val deepest = layers.lastOrNull()
         val stemConclusion = stemConclusion(layers)
         val branchConclusion = branchConclusion(palaces, layers)
@@ -187,6 +198,7 @@ object StructuredAnalysisEngine {
             "天干显层" to stemConclusion,
             "地支基础层" to branchConclusion,
             "综合应事" to events.take(3).joinToString("；") { "${it.title}（${it.level}）" },
+            "场景翻译" to scenes.take(3).joinToString("；") { "${it.title}（${it.phase}）" },
             "优先领域" to domains.take(4).joinToString("；") { "${it.domain}（${it.level}）" },
             "显隐层级" to visibilityJudgment(layers, palaces),
             "主动被动" to "关系只说明哪一层被发动，不自动决定主动或被动。主体先作决定并调整，表现为主动；制度、他人、身体或环境先改变，表现为被动。",
@@ -204,6 +216,7 @@ object StructuredAnalysisEngine {
             palaces = palaces,
             domains = domains,
             events = events,
+            scenes = scenes,
             judgment = judgment,
             signature = signature,
             memoryBefore = memoryBefore
@@ -451,20 +464,26 @@ object StructuredAnalysisEngine {
 
     private fun buildEventHypotheses(
         snapshot: AnalysisSnapshot,
-        layers: List<StructuredLayer>,
-        palaces: List<PalaceActivation>
+        layers: List<StructuredLayer>
     ): List<EventHypothesis> {
         val latest = layers.lastOrNull() ?: return emptyList()
-        val activePalaces = palaces.map { it.pillar }.toSet()
+        val activePalaces = (latest.branchRelations + latest.structures).flatMap { it.targetLabels }
+            .filter { it in pillarDomains }
+            .toSet()
         val latestGods = buildSet {
             add(godGroup(latest.visibleTheme.substringAfter("：").substringBefore("｜")))
             latest.latentThemes.map { it.drop(1) }.mapTo(this, ::godGroup)
         }
-        val structureGroups = layers.flatMap { it.structures }.mapNotNull { it.resultElement }
+        val structureGroups = latest.structures.mapNotNull { it.resultElement }
             .map { elementTenGodGroup(snapshot.dayMaster, it) }.toSet()
         val halfGroups = latest.branchRelations.mapNotNull { it.resultElement }
             .map { elementTenGodGroup(snapshot.dayMaster, it) }.toSet()
         val allVisibleGroups = layers.map {
+            godGroup(it.visibleTheme.substringAfter("：").substringBefore("｜"))
+        }.toSet()
+        val nearVisibleGroups = layers.filter {
+            it.label == "流月" || it.label == "流日" || it.label == "流时"
+        }.map {
             godGroup(it.visibleTheme.substringAfter("：").substringBefore("｜"))
         }.toSet()
         val strongThemes = latestGods + structureGroups
@@ -472,7 +491,9 @@ object StructuredAnalysisEngine {
         fun hardHit(target: String): Boolean = currentRelations.any {
             target in it.targetLabels && (it.relation.contains("冲") || it.relation.contains("刑") || it.relation.contains("破"))
         }
-        val yearHard = hardHit("年柱") || hardHit("大运")
+        val yearHard = hardHit("年柱")
+        val daYunHard = hardHit("大运")
+        val institutionalHard = hardHit("月柱") || hardHit("日柱")
         val monthActive = "月柱" in activePalaces
         val dayActive = "日柱" in activePalaces
         val hourActive = "时柱" in activePalaces
@@ -488,25 +509,36 @@ object StructuredAnalysisEngine {
             )
         }
 
-        if (monthActive && academicTheme) {
-            val points = 5 + (if (officialStrong) 2 else 0) + (if (yearHard) 2 else 0)
+        if ((monthActive || officialStrong) && academicTheme) {
+            val points = 5 + (if (officialStrong) 2 else 0) + (if (institutionalHard) 2 else 0)
             add(
                 points,
                 "教育、职业或正式身份转换",
                 "优先核对考试录取、毕业升学、入职调岗、资格审核或培养阶段变化；同一事件可同时带动环境、人际和作息。",
-                "月柱已发动；当前见${(strongThemes.intersect(setOf("印", "官杀"))).joinToString("、")}主题${if (yearHard) "；外部环境同步被冲动" else ""}"
+                "${if (monthActive) "月柱已发动" else "当前官杀结构成立"}；当前见${(strongThemes.intersect(setOf("印", "官杀"))).joinToString("、")}主题${if (institutionalHard) "；月柱或日柱同时受到硬作用" else ""}"
             )
         }
         if (yearHard) {
-            val hits = currentRelations.filter {
-                ("年柱" in it.targetLabels || "大运" in it.targetLabels) &&
+            val yearHits = currentRelations.filter {
+                "年柱" in it.targetLabels &&
+                    (it.relation.contains("冲") || it.relation.contains("刑") || it.relation.contains("破"))
+            }
+            val cycleHits = currentRelations.filter {
+                "大运" in it.targetLabels &&
                     (it.relation.contains("冲") || it.relation.contains("刑") || it.relation.contains("破"))
             }
             add(
-                if (hits.size >= 2) 8 else 6,
-                "环境与圈层迁移",
-                "优先核对学校、单位、住处、班级团队或社交圈的离开、进入与重组。",
-                hits.joinToString("、") { "${it.sourceLabel}${it.sourceSymbol}${it.relation}${it.targetLabels.first()}${it.targetSymbols.first()}" }
+                if (cycleHits.isNotEmpty()) 8 else 6,
+                "外部环境与圈层重组",
+                "优先核对社交圈、团队成员、远端人际或家庭外部安排的重组；这一条不用于判断搬家、驻点、轮转或更换单位。",
+                (yearHits + cycleHits).joinToString("、") { "${it.sourceLabel}${it.sourceSymbol}${it.relation}${it.targetLabels.first()}${it.targetSymbols.first()}" }
+            )
+        } else if (daYunHard) {
+            add(
+                5,
+                "阶段主线调整",
+                "当前层直接冲动大运，优先核对这一阶段既有任务、角色或推进方式的调整；不据此指定某个生活场景。",
+                currentRelations.filter { "大运" in it.targetLabels }.joinToString("、") { it.relation }
             )
         }
         if (snapshot.gender == 0 && "官杀" in strongThemes && (dayActive || "年柱" in activePalaces || hourActive)) {
@@ -525,16 +557,206 @@ object StructuredAnalysisEngine {
                 currentRelations.filter { "日柱" in it.targetLabels }.joinToString("、") { it.relation }
             )
         } else if (dayActive && yearHard) {
-            add(4, "生活随环境改变", "外部阶段转换会继续改变住处、作息和日常节奏。", "年柱或大运受冲，同时日柱被连接")
+            add(4, "外部关系与日常安排并行调整", "外部圈层与日常安排在同一层同时发动，但不预设二者属于同一事件。", "年柱或大运受冲，同时日柱被连接")
         }
         if (hourActive && ("食伤" in allVisibleGroups || "食伤" in structureGroups || "食伤" in halfGroups)) {
             add(5, "成果与技能输出", "论文项目、考试结果、作品技能或长期计划进入实际产出阶段。", "时柱发动并见食伤主题")
+        }
+        if (
+            latest.label == "流时" &&
+            nearVisibleGroups.containsAll(setOf("印", "比劫", "食伤"))
+        ) {
+            add(
+                3,
+                "同辈交流与信息讨论",
+                "可核对与同辈、同事、同学或后辈交流学习、工作或专业事项；食伤同时显出时，交流也可能夹带日常闲谈。",
+                "流月、流日、流时的明干同时连接比劫、食伤与印；只列为近时活动候选"
+            )
         }
         if ("财" in latestGods || "财" in structureGroups) {
             add(4, "资源与财务安排", "收入、支出、报销、设备、消费或现实资源配置成为明确议题。", "当前流入层见财星主题")
         }
 
         return scored.sortedByDescending { it.first }.map { it.second }.distinctBy { it.title }.take(5)
+    }
+
+    private fun buildSceneTranslations(
+        snapshot: AnalysisSnapshot,
+        layers: List<StructuredLayer>
+    ): List<SceneTranslation> {
+        val latest = layers.lastOrNull() ?: return emptyList()
+        val currentEvidence = latest.branchRelations + latest.structures
+        val currentNatalTargets = currentEvidence.flatMap { it.targetLabels }
+            .filter { it in pillarDomains }
+            .toSet()
+        val currentGroups = buildSet {
+            add(godGroup(latest.visibleTheme.substringAfter("：").substringBefore("｜")))
+            latest.latentThemes.map { it.drop(1) }.mapTo(this, ::godGroup)
+            latest.branchRelations.mapNotNull { it.resultElement }
+                .map { elementTenGodGroup(snapshot.dayMaster, it) }
+                .filter(String::isNotBlank)
+                .forEach { add(it) }
+            latest.structures.mapNotNull { it.resultElement }
+                .map { elementTenGodGroup(snapshot.dayMaster, it) }
+                .filter(String::isNotBlank)
+                .forEach { add(it) }
+        }.filter(String::isNotBlank).toSet()
+        val directStemConflict = latest.stemRelations.any { it.directConflict }
+        val hasHardChange = currentEvidence.any {
+            it.relation.contains("冲") || it.relation.contains("刑") || it.relation.contains("破")
+        }
+        val hasBinding = currentEvidence.any { it.relation.contains("合") }
+        val hasFriction = currentEvidence.any { it.relation.contains("害") }
+        val backgroundPhase = when {
+            currentNatalTargets.isEmpty() && directStemConflict -> "显层先动"
+            currentNatalTargets.isEmpty() -> "承接既有事项"
+            hasHardChange -> "触发或重组"
+            hasFriction -> "磨合与校正"
+            hasBinding -> "连接与整合"
+            else -> "主题显现"
+        }
+        val relationPath = currentEvidence.filter { evidence ->
+            evidence.targetLabels.any { it in pillarDomains }
+        }.joinToString("、") { evidence ->
+            val targets = evidence.targetLabels.filter { it in pillarDomains }.joinToString("、")
+            "${evidence.sourceLabel}${evidence.sourceSymbol}${evidence.relation}$targets"
+        }
+
+        if (currentNatalTargets.isEmpty()) {
+            val candidates = buildList {
+                if ("印" in currentGroups) add("学习、信息、文书、医疗或支持事项的继续处理")
+                if ("食伤" in currentGroups) add("既有任务的表达、操作、技能或成果输出")
+                if ("财" in currentGroups) add("已有事务中的资源、费用、设备或现实安排")
+                if ("比劫" in currentGroups) add("同辈、同事或合作者之间的分工与协作")
+                if (isEmpty()) add("延续上一层已经形成的事务")
+            }
+            return listOf(
+                SceneTranslation(
+                    title = if (directStemConflict) "显层目标与表达调整" else "本层以承接为主",
+                    level = if (directStemConflict) "中" else "条件性",
+                    phase = backgroundPhase,
+                    path = if (directStemConflict) "${latest.label}天干有直接冲突，但地支未直接发动本命四柱。" else
+                        "${latest.label}地支未直接冲、刑、合、害、破本命四柱；当前主题来自天干、藏干和年运背景。",
+                    candidates = candidates,
+                    boundary = "本层单独不足以确定换环境、关系建立、项目启动或结果落定；若流日、流时或其他直接证据重复同一主题，可将相应候选升级。"
+                )
+            )
+        }
+
+        val translations = mutableListOf<Pair<Int, SceneTranslation>>()
+        fun add(
+            points: Int,
+            title: String,
+            scenePhase: String,
+            candidates: List<String>,
+            boundary: String,
+            pathExtra: String
+        ) {
+            translations += points to SceneTranslation(
+                title = title,
+                level = when { points >= 8 -> "强"; points >= 5 -> "中"; else -> "条件性" },
+                phase = scenePhase,
+                path = listOf(relationPath, pathExtra).filter(String::isNotBlank).joinToString("；"),
+                candidates = candidates,
+                boundary = boundary
+            )
+        }
+
+        val yearActive = "年柱" in currentNatalTargets
+        val monthActive = "月柱" in currentNatalTargets
+        val dayActive = "日柱" in currentNatalTargets
+        val hourActive = "时柱" in currentNatalTargets
+        fun hardHit(target: String): Boolean = currentEvidence.any {
+            target in it.targetLabels &&
+                (it.relation.contains("冲") || it.relation.contains("刑") || it.relation.contains("破"))
+        }
+        val yearHard = hardHit("年柱")
+        val monthHard = hardHit("月柱")
+        val dayHard = hardHit("日柱")
+        val hourHard = hardHit("时柱")
+        val academicTheme = currentGroups.any { it == "印" || it == "官杀" }
+        val outputTheme = "食伤" in currentGroups
+
+        if (monthActive && academicTheme) {
+            val institutionalShift = monthHard || dayHard
+            add(
+                points = if (monthHard && dayHard) 9 else 6,
+                title = "制度环境与团队安排",
+                scenePhase = if (institutionalShift) "制度或生活结构触发" else "既有安排内的协调",
+                candidates = buildList {
+                    if (institutionalShift) {
+                        add("强候选：进入、离开、轮转、调岗或地点变化")
+                        add("并行候选：新安排下的分工、规则与适应")
+                    } else {
+                        add("优先候选：既有安排下的融入、协调、关系磨合或规则调整")
+                        add("低位候选：进入、离开、轮转、调岗或地点变化")
+                    }
+                },
+                boundary = if (institutionalShift) {
+                    "月柱或日柱受到冲、刑、破，迁动候选获得较高权重；仍需现实出现新的进入、退出或地点切换，不能仅凭年柱受冲确定迁移。"
+                } else {
+                    "月柱、日柱未受冲、刑、破时，优先判断既有制度安排中的协调与适应；迁动保留为低位候选，需流日、流时或其他迁动证据加强，不能单独据此判断。"
+                },
+                pathExtra = "月柱连接${currentGroups.intersect(setOf("印", "官杀")).joinToString("、")}主题；地点判断只看月柱、日柱是否受到硬作用"
+            )
+        }
+
+        if (yearActive) {
+            add(
+                points = if (yearHard) 7 else 5,
+                title = "外部环境与圈层关系",
+                scenePhase = if (yearHard) "外部关系重组" else "外部关系连接",
+                candidates = listOf("社交圈、团队成员、远端人际或家庭外部安排的重组"),
+                boundary = "年柱被冲动只定位外部关系与圈层变化，不用于判断是否搬家、远行、驻点、轮转或更换单位。",
+                pathExtra = "年柱对应社会环境与远端人际"
+            )
+        }
+
+        if (dayActive) {
+            add(
+                points = if (dayHard) 7 else 5,
+                title = "居住作息与日常结构",
+                scenePhase = if (dayHard) "日常结构触发" else "日常安排连接",
+                candidates = listOf("作息、排班、住宿、通勤、身体管理或亲密关系中的具体安排"),
+                boundary = "日柱发动只能确定日常结构需要调整，不单凭冲刑断疾病、搬家或感情变故。",
+                pathExtra = "日柱对应居住、作息、身体与亲密安排"
+            )
+        }
+
+        if (hourActive && outputTheme) {
+            add(
+                points = 6,
+                title = "长期任务与成果执行",
+                scenePhase = if (hourHard) "计划结构调整" else "执行与输出承接",
+                candidates = listOf("论文、项目、考试、作品、技能或长期计划的具体操作与输出"),
+                boundary = "食伤与时柱同时显出只能确定输出和执行增强，不直接等于项目启动、完成或通过。",
+                pathExtra = "时柱发动且当前见食伤主题"
+            )
+        }
+
+        if ("财" in currentGroups) {
+            add(
+                points = 4,
+                title = "现实资源配置",
+                scenePhase = "资源议题显现",
+                candidates = listOf("收支、报销、设备、消费或其他现实资源的分配"),
+                boundary = "财星只确定资源议题变得明确，不直接判定得财或破财。",
+                pathExtra = "当前流入层见财星主题"
+            )
+        }
+
+        if (translations.isEmpty()) {
+            add(
+                points = 3,
+                title = "宫位具体调整",
+                scenePhase = backgroundPhase,
+                candidates = currentNatalTargets.flatMap { pillarDomains[it].orEmpty() }.distinct(),
+                boundary = "当前只能定位生活领域，尚不足以唯一确定事件。",
+                pathExtra = "当前直接发动${currentNatalTargets.joinToString("、")}"
+            )
+        }
+
+        return translations.sortedByDescending { it.first }.map { it.second }.distinctBy { it.title }.take(4)
     }
 
     private fun visibleTheme(dayMaster: String, gan: String): String {
