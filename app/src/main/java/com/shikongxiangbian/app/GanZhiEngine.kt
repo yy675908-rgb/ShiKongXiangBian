@@ -26,6 +26,7 @@ data class AnalysisSnapshot(
     val natal: List<PillarView>,
     val dynamic: List<PillarView>,
     val dayMaster: String,
+    val gender: Int,
     val daYun: DaYunView?,
     val relations: List<String>
 )
@@ -112,6 +113,7 @@ object GanZhiEngine {
             natal = natal,
             dynamic = dynamic,
             dayMaster = dayMaster,
+            gender = gender,
             daYun = daYun,
             relations = detectRelations(nodes)
         )
