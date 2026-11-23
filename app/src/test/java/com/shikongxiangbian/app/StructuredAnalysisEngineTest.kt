@@ -65,11 +65,55 @@ class StructuredAnalysisEngineTest {
         assertFalse(domains.contains("学业工作"))
     }
 
+    @Test
+    fun calibrationRecognizesStageTransitionAndRelationshipTogether() {
+        val domains = StructuredCalibrationEngine.classifyActual("高考结束去上大学，同年开始恋情")
+
+        assertTrue(domains.contains("学业工作"))
+        assertTrue(domains.contains("感情关系"))
+    }
+
+    @Test
+    fun dingYouFindsOneStageTransitionBehindSeveralPalaces() {
+        val reading = StructuredAnalysisEngine.analyze(
+            snapshot("丁酉", daYun = "己卯"),
+            LocalDateTime.of(2017, 6, 1, 12, 0),
+            AnalysisScope.YEAR,
+            ""
+        )
+
+        assertEquals("环境与圈层迁移", reading.events.first().title)
+        assertTrue(reading.events.any { it.title == "教育、职业或正式身份转换" })
+        assertTrue(reading.events.any { it.title == "生活随环境改变" })
+    }
+
+    @Test
+    fun renYinTranslatesWoodCombinationToStatusAndRelationship() {
+        val reading = StructuredAnalysisEngine.analyze(
+            snapshot("壬寅", daYun = "庚辰"),
+            LocalDateTime.of(2022, 6, 1, 12, 0),
+            AnalysisScope.YEAR,
+            ""
+        )
+        val year = reading.layers.single { it.label == "流年" }
+
+        assertTrue(year.structures.any { it.relation == "寅卯辰三会木" && it.resultElement == "木" })
+        assertEquals(listOf("学业事业与制度", "感情与亲密关系"), reading.domains.take(2).map { it.domain })
+        assertEquals(
+            listOf("教育、职业或正式身份转换", "感情关系建立或重组"),
+            reading.events.take(2).map { it.title }
+        )
+    }
+
     private fun analyze(year: String): StructuredReading = StructuredAnalysisEngine.analyze(
         snapshot(year), target, AnalysisScope.YEAR, ""
     )
 
-    private fun snapshot(year: String, finer: List<String> = emptyList()): AnalysisSnapshot {
+    private fun snapshot(
+        year: String,
+        finer: List<String> = emptyList(),
+        daYun: String = "庚辰"
+    ): AnalysisSnapshot {
         val dynamic = buildList {
             add(pillar("流年", year))
             finer.getOrNull(0)?.let { add(pillar("流月", it)) }
@@ -86,7 +130,7 @@ class StructuredAnalysisEngineTest {
             dynamic = dynamic,
             dayMaster = "己",
             gender = 0,
-            daYun = DaYunView("庚辰", 2022, 2031, 30, 39),
+            daYun = DaYunView(daYun, 2011, 2030, 12, 31),
             relations = emptyList()
         )
     }

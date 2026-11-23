@@ -27,7 +27,8 @@ data class InteractionEvidence(
     val relation: String,
     val meaning: String,
     val weight: Int,
-    val directConflict: Boolean = false
+    val directConflict: Boolean = false,
+    val resultElement: String? = null
 )
 
 data class StructuredLayer(
@@ -56,6 +57,13 @@ data class DomainCandidate(
     val boundary: String
 )
 
+data class EventHypothesis(
+    val title: String,
+    val level: String,
+    val description: String,
+    val basis: String
+)
+
 data class StructuredReading(
     val scope: AnalysisScope,
     val natal: NatalBaseline,
@@ -65,6 +73,7 @@ data class StructuredReading(
     val branchConclusion: String,
     val palaces: List<PalaceActivation>,
     val domains: List<DomainCandidate>,
+    val events: List<EventHypothesis>,
     val judgment: LinkedHashMap<String, String>,
     val signature: String,
     val memoryBefore: String
@@ -118,7 +127,7 @@ object StructuredAnalysisEngine {
     )
 
     private val pillarDomains = mapOf(
-        "年柱" to listOf("父母家庭与原生环境", "社会环境与远端人际"),
+        "年柱" to listOf("社会环境与远端人际", "父母家庭与原生环境"),
         "月柱" to listOf("学业事业与制度", "父母家庭与原生环境", "工作学习环境"),
         "日柱" to listOf("居住作息与身体", "感情与亲密关系", "日常生活结构"),
         "时柱" to listOf("长期计划与成果", "子女下属与后续发展", "兴趣表达与技能")
@@ -166,16 +175,18 @@ object StructuredAnalysisEngine {
 
         val palaces = buildPalaces(layers)
         val domains = buildDomains(snapshot, layers, palaces)
+        val events = buildEventHypotheses(snapshot, layers, palaces)
         val deepest = layers.lastOrNull()
         val stemConclusion = stemConclusion(layers)
         val branchConclusion = branchConclusion(palaces, layers)
-        val conclusion = conclusion(stemConclusion, branchConclusion, domains)
+        val conclusion = conclusion(stemConclusion, branchConclusion, domains, events)
         val signature = buildSignature(scope, deepest, palaces, layers)
         val memoryBefore = StructuredCalibrationEngine.memorySummary(memoryRaw, signature)
         val judgment = linkedMapOf(
             "核心判断" to conclusion,
             "天干显层" to stemConclusion,
             "地支基础层" to branchConclusion,
+            "综合应事" to events.take(3).joinToString("；") { "${it.title}（${it.level}）" },
             "优先领域" to domains.take(4).joinToString("；") { "${it.domain}（${it.level}）" },
             "显隐层级" to visibilityJudgment(layers, palaces),
             "主动被动" to "关系只说明哪一层被发动，不自动决定主动或被动。主体先作决定并调整，表现为主动；制度、他人、身体或环境先改变，表现为被动。",
@@ -192,6 +203,7 @@ object StructuredAnalysisEngine {
             branchConclusion = branchConclusion,
             palaces = palaces,
             domains = domains,
+            events = events,
             judgment = judgment,
             signature = signature,
             memoryBefore = memoryBefore
@@ -265,6 +277,7 @@ object StructuredAnalysisEngine {
         val relations = mutableListOf<String>()
         var weight = 0
         var conflict = false
+        var resultElement: String? = null
         val p = pair(source.zhi, target.zhi)
         if (source.zhi == target.zhi) {
             relations += if (source.zhi in selfXing) "同支＋自刑" else "同支"
@@ -296,6 +309,7 @@ object StructuredAnalysisEngine {
         halfCombine[p]?.let {
             relations += "半合${it}"
             weight = maxOf(weight, 2)
+            resultElement = it
         }
         if (relations.isEmpty()) return null
         return InteractionEvidence(
@@ -307,7 +321,8 @@ object StructuredAnalysisEngine {
             relation = relations.distinct().joinToString("＋"),
             meaning = branchMeaning(relations, target.label),
             weight = weight,
-            directConflict = conflict
+            directConflict = conflict,
+            resultElement = resultElement
         )
     }
 
@@ -315,14 +330,14 @@ object StructuredAnalysisEngine {
         val result = mutableListOf<InteractionEvidence>()
         val branches = field.map { it.zhi }.toSet()
         val structures = listOf(
-            TripleStructure(setOf("申", "子", "辰"), "申子辰三合水", 4),
-            TripleStructure(setOf("亥", "卯", "未"), "亥卯未三合木", 4),
-            TripleStructure(setOf("寅", "午", "戌"), "寅午戌三合火", 4),
-            TripleStructure(setOf("巳", "酉", "丑"), "巳酉丑三合金", 4),
-            TripleStructure(setOf("亥", "子", "丑"), "亥子丑三会水", 4),
-            TripleStructure(setOf("寅", "卯", "辰"), "寅卯辰三会木", 4),
-            TripleStructure(setOf("巳", "午", "未"), "巳午未三会火", 4),
-            TripleStructure(setOf("申", "酉", "戌"), "申酉戌三会金", 4),
+            TripleStructure(setOf("申", "子", "辰"), "申子辰三合水", 4, "水"),
+            TripleStructure(setOf("亥", "卯", "未"), "亥卯未三合木", 4, "木"),
+            TripleStructure(setOf("寅", "午", "戌"), "寅午戌三合火", 4, "火"),
+            TripleStructure(setOf("巳", "酉", "丑"), "巳酉丑三合金", 4, "金"),
+            TripleStructure(setOf("亥", "子", "丑"), "亥子丑三会水", 4, "水"),
+            TripleStructure(setOf("寅", "卯", "辰"), "寅卯辰三会木", 4, "木"),
+            TripleStructure(setOf("巳", "午", "未"), "巳午未三会火", 4, "火"),
+            TripleStructure(setOf("申", "酉", "戌"), "申酉戌三会金", 4, "金"),
             TripleStructure(setOf("寅", "巳", "申"), "寅巳申三刑齐", 6),
             TripleStructure(setOf("丑", "未", "戌"), "丑未戌三刑齐", 6),
             TripleStructure(setOf("辰", "戌", "丑", "未"), "辰戌丑未四墓库齐", 5)
@@ -342,7 +357,8 @@ object StructuredAnalysisEngine {
                     else -> "组合关系成立，相关元素主题增强；是否成化仍看整体条件。"
                 },
                 weight = item.weight,
-                directConflict = item.name.contains("刑")
+                directConflict = item.name.contains("刑"),
+                resultElement = item.resultElement
             )
         }
         val natalHits = field.filter { it.natal && pair(source.zhi, it.zhi) in chong }
@@ -393,8 +409,14 @@ object StructuredAnalysisEngine {
             bases.getOrPut(domain) { mutableListOf() }.add(basis)
         }
         palaces.forEach { palace ->
-            val points = when (palace.level) { "强" -> 4; "中" -> 3; else -> 1 }
-            palace.domains.forEach { add(it, points, "${palace.pillar}${palace.level}激活") }
+            val points = when (palace.level) { "强" -> 5; "中" -> 3; else -> 1 }
+            palace.domains.forEach { domain ->
+                val externalBoost = if (
+                    palace.pillar == "年柱" && domain == "社会环境与远端人际" &&
+                    palace.reasons.any { it.contains("冲") || it.contains("破") }
+                ) 2 else 0
+                add(domain, points + externalBoost, "${palace.pillar}${palace.level}激活")
+            }
         }
         layers.forEach { layer ->
             val visible = layer.visibleTheme.substringAfter("：").substringBefore("｜")
@@ -403,6 +425,20 @@ object StructuredAnalysisEngine {
                 tenGodDomains(god, snapshot.gender).forEach { add(it, 1, "${layer.label}藏${god}") }
             }
         }
+        layers.flatMap { it.structures }.filter { it.resultElement != null }.distinctBy { it.relation }.forEach { evidence ->
+            val group = elementTenGodGroup(snapshot.dayMaster, evidence.resultElement.orEmpty())
+            tenGodDomains(group, snapshot.gender).forEach { domain ->
+                add(domain, 4, "${evidence.relation}形成${group}主题")
+            }
+        }
+        layers.flatMap { it.branchRelations }.filter { it.resultElement != null }
+            .distinctBy { it.sourceLabel + it.sourceSymbol + it.targetLabels.joinToString() + it.relation }
+            .forEach { evidence ->
+                val group = elementTenGodGroup(snapshot.dayMaster, evidence.resultElement.orEmpty())
+                tenGodDomains(group, snapshot.gender).forEach { domain ->
+                    add(domain, 1, "${evidence.relation}连接${group}主题")
+                }
+            }
         return score.entries.sortedByDescending { it.value }.take(7).map { (domain, value) ->
             DomainCandidate(
                 domain = domain,
@@ -411,6 +447,94 @@ object StructuredAnalysisEngine {
                 boundary = domainBoundary(domain)
             )
         }
+    }
+
+    private fun buildEventHypotheses(
+        snapshot: AnalysisSnapshot,
+        layers: List<StructuredLayer>,
+        palaces: List<PalaceActivation>
+    ): List<EventHypothesis> {
+        val latest = layers.lastOrNull() ?: return emptyList()
+        val activePalaces = palaces.map { it.pillar }.toSet()
+        val latestGods = buildSet {
+            add(godGroup(latest.visibleTheme.substringAfter("：").substringBefore("｜")))
+            latest.latentThemes.map { it.drop(1) }.mapTo(this, ::godGroup)
+        }
+        val structureGroups = layers.flatMap { it.structures }.mapNotNull { it.resultElement }
+            .map { elementTenGodGroup(snapshot.dayMaster, it) }.toSet()
+        val halfGroups = latest.branchRelations.mapNotNull { it.resultElement }
+            .map { elementTenGodGroup(snapshot.dayMaster, it) }.toSet()
+        val allVisibleGroups = layers.map {
+            godGroup(it.visibleTheme.substringAfter("：").substringBefore("｜"))
+        }.toSet()
+        val strongThemes = latestGods + structureGroups
+        val currentRelations = latest.branchRelations
+        fun hardHit(target: String): Boolean = currentRelations.any {
+            target in it.targetLabels && (it.relation.contains("冲") || it.relation.contains("刑") || it.relation.contains("破"))
+        }
+        val yearHard = hardHit("年柱") || hardHit("大运")
+        val monthActive = "月柱" in activePalaces
+        val dayActive = "日柱" in activePalaces
+        val hourActive = "时柱" in activePalaces
+        val academicTheme = strongThemes.any { it == "印" || it == "官杀" }
+        val officialStrong = "官杀" in structureGroups
+        val scored = mutableListOf<Pair<Int, EventHypothesis>>()
+        fun add(points: Int, title: String, description: String, basis: String) {
+            scored += points to EventHypothesis(
+                title = title,
+                level = when { points >= 7 -> "强"; points >= 4 -> "中"; else -> "条件性" },
+                description = description,
+                basis = basis
+            )
+        }
+
+        if (monthActive && academicTheme) {
+            val points = 5 + (if (officialStrong) 2 else 0) + (if (yearHard) 2 else 0)
+            add(
+                points,
+                "教育、职业或正式身份转换",
+                "优先核对考试录取、毕业升学、入职调岗、资格审核或培养阶段变化；同一事件可同时带动环境、人际和作息。",
+                "月柱已发动；当前见${(strongThemes.intersect(setOf("印", "官杀"))).joinToString("、")}主题${if (yearHard) "；外部环境同步被冲动" else ""}"
+            )
+        }
+        if (yearHard) {
+            val hits = currentRelations.filter {
+                ("年柱" in it.targetLabels || "大运" in it.targetLabels) &&
+                    (it.relation.contains("冲") || it.relation.contains("刑") || it.relation.contains("破"))
+            }
+            add(
+                if (hits.size >= 2) 8 else 6,
+                "环境与圈层迁移",
+                "优先核对学校、单位、住处、班级团队或社交圈的离开、进入与重组。",
+                hits.joinToString("、") { "${it.sourceLabel}${it.sourceSymbol}${it.relation}${it.targetLabels.first()}${it.targetSymbols.first()}" }
+            )
+        }
+        if (snapshot.gender == 0 && "官杀" in strongThemes && (dayActive || "年柱" in activePalaces || hourActive)) {
+            add(
+                if (officialStrong) 7 else 4,
+                "感情关系建立或重组",
+                "可能出现新关系、关系确认、相处规则改变或已有关系重新定位；与身份变化可在同一年并行发生。",
+                if (officialStrong) "完整组合形成官杀主题，女命关系领域同步增强" else "流入层带官杀主题且关系相关宫位被发动"
+            )
+        }
+        if (hardHit("日柱")) {
+            add(
+                7,
+                "日常生活结构调整",
+                "居住、作息、身体管理或亲密关系中的具体安排需要重新组织。",
+                currentRelations.filter { "日柱" in it.targetLabels }.joinToString("、") { it.relation }
+            )
+        } else if (dayActive && yearHard) {
+            add(4, "生活随环境改变", "外部阶段转换会继续改变住处、作息和日常节奏。", "年柱或大运受冲，同时日柱被连接")
+        }
+        if (hourActive && ("食伤" in allVisibleGroups || "食伤" in structureGroups || "食伤" in halfGroups)) {
+            add(5, "成果与技能输出", "论文项目、考试结果、作品技能或长期计划进入实际产出阶段。", "时柱发动并见食伤主题")
+        }
+        if ("财" in latestGods || "财" in structureGroups) {
+            add(4, "资源与财务安排", "收入、支出、报销、设备、消费或现实资源配置成为明确议题。", "当前流入层见财星主题")
+        }
+
+        return scored.sortedByDescending { it.first }.map { it.second }.distinctBy { it.title }.take(5)
     }
 
     private fun visibleTheme(dayMaster: String, gan: String): String {
@@ -468,9 +592,15 @@ object StructuredAnalysisEngine {
         return "地支发动${palaceText}${structureText}。这里表示相关生活基础和私域进入调整，不直接等于坏事、疾病或旧事重现。"
     }
 
-    private fun conclusion(stem: String, branch: String, domains: List<DomainCandidate>): String {
+    private fun conclusion(
+        stem: String,
+        branch: String,
+        domains: List<DomainCandidate>,
+        events: List<EventHypothesis>
+    ): String {
         val top = domains.take(3).joinToString("、") { it.domain }
-        return "${stem.substringBefore("。")}；${branch.substringBefore("。")}。优先观察${top.ifBlank { "现实落点" }}，保留多个落点，不把单一十神硬套成唯一事件。"
+        val eventText = events.take(2).joinToString("、") { it.title }
+        return "${stem.substringBefore("。")}；${branch.substringBefore("。")}。优先核对${eventText.ifBlank { top.ifBlank { "现实落点" } }}；多个宫位可由同一核心事件同时带动。"
     }
 
     private fun visibilityJudgment(layers: List<StructuredLayer>, palaces: List<PalaceActivation>): String {
@@ -537,19 +667,40 @@ object StructuredAnalysisEngine {
         }
     }
 
+    private fun godGroup(god: String): String = when (god) {
+        "比肩", "劫财", "比劫" -> "比劫"
+        "食神", "伤官", "食伤" -> "食伤"
+        "正财", "偏财", "财" -> "财"
+        "正官", "七杀", "官杀" -> "官杀"
+        "正印", "偏印", "印" -> "印"
+        else -> god
+    }
+
+    private fun elementTenGodGroup(dayMaster: String, element: String): String {
+        val me = ganElement[dayMaster].orEmpty()
+        return when {
+            me == element -> "比劫"
+            generates[me] == element -> "食伤"
+            controls[me] == element -> "财"
+            controls[element] == me -> "官杀"
+            generates[element] == me -> "印"
+            else -> ""
+        }
+    }
+
     private fun tenGodDomains(god: String, gender: Int): List<String> = when (god) {
-        "比肩", "劫财" -> listOf("同辈合作与竞争", "日常生活结构")
-        "食神", "伤官" -> listOf("长期计划与成果", "兴趣表达与技能")
-        "正财", "偏财" -> buildList {
+        "比肩", "劫财", "比劫" -> listOf("同辈合作与竞争", "日常生活结构")
+        "食神", "伤官", "食伤" -> listOf("长期计划与成果", "兴趣表达与技能")
+        "正财", "偏财", "财" -> buildList {
             add("财务资源")
             add("现实享受与消费")
             if (gender == 1) add("感情与亲密关系")
         }
-        "正官", "七杀" -> buildList {
+        "正官", "七杀", "官杀" -> buildList {
             add("学业事业与制度")
             if (gender == 0) add("感情与亲密关系")
         }
-        "正印", "偏印" -> listOf("学习文书与医疗", "父母家庭与原生环境")
+        "正印", "偏印", "印" -> listOf("学习文书与医疗")
         else -> emptyList()
     }
 
@@ -577,5 +728,10 @@ object StructuredAnalysisEngine {
 
     private fun levelValue(level: String): Int = when (level) { "强" -> 3; "中" -> 2; else -> 1 }
 
-    private data class TripleStructure(val need: Set<String>, val name: String, val weight: Int)
+    private data class TripleStructure(
+        val need: Set<String>,
+        val name: String,
+        val weight: Int,
+        val resultElement: String? = null
+    )
 }
