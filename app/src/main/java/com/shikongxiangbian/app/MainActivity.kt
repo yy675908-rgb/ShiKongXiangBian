@@ -59,7 +59,7 @@ private val GREEN_V7 = Color(0xFF214E3E)
 private val SOFT_V7 = Color(0xFFE9F0EC)
 private val LINE_V7 = Color(0xFFDDE4E0)
 
-class V7MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("shikongxiangbian", MODE_PRIVATE)
@@ -235,6 +235,7 @@ private fun V7AnalysisPage(
         } else {
             item { V7TimeSpace(snapshot, scope) }
             item { V7Section("核心判断") { Text(reading.conclusion, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold) } }
+            item { V7Events(reading.events) }
             item { V7Natal(reading.natal) }
             item { V7Layers(reading.layers) }
             item { V7Palaces(reading.palaces) }
@@ -296,6 +297,16 @@ private fun V7Natal(natal: NatalBaseline) {
         V7Sub("生源与泄口", natal.sourceOutlet)
         V7Sub("明暗结构", natal.visibleHidden)
         Text(natal.rule, fontSize = 12.sp, color = Color.Gray)
+    }
+}
+
+@Composable
+private fun V7Events(events: List<EventHypothesis>) {
+    V7Section("综合应事 · 同一事件可带动多宫") {
+        if (events.isEmpty()) Text("当前结构不足以形成稳定的综合事件。")
+        events.forEachIndexed { index, event ->
+            V7Sub("${index + 1}. ${event.title}｜${event.level}", "${event.description}\n依据：${event.basis}")
+        }
     }
 }
 
@@ -402,6 +413,7 @@ private object V7RecordBuilder {
             layer.structures.forEach { appendLine("- ${it.relation}") }
         }
         appendLine("【宫位】${reading.palaces.joinToString("；") { "${it.pillar}${it.level}" }}")
+        appendLine("【综合应事】${reading.events.joinToString("；") { "${it.title}${it.level}" }}")
         appendLine("【领域】${reading.domains.joinToString("；") { "${it.domain}${it.level}" }}")
         appendLine("【预测前记忆】${reading.memoryBefore}")
         appendLine("§ACTUAL")
